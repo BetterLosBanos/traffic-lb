@@ -1,0 +1,109 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-surface: #f6f8fb;
+  --color-surface-raised: #ffffff;
+  --color-surface-overlay: #f1f5f9;
+  --color-surface-subtle: #eef4f8;
+  --color-text-primary: #111827;
+  --color-text-secondary: #374151;
+  --color-text-muted: #64748b;
+  --color-border: #d7dee8;
+  --color-focus: #2563eb;
+  --color-route-northbound: #2563eb;
+  --color-route-southbound: #15803d;
+  --color-map-marker: #1f2937;
+  --color-map-marker-contrast: #ffffff;
+  --color-toggle-thumb: #ffffff;
+  --color-toggle-shadow: rgba(0, 0, 0, 0.22);
+  --color-toggle-icon-sun: #b45309;
+  --color-toggle-icon-moon: #93c5fd;
+  --color-congestion-light: #15803d;
+  --color-congestion-moderate: #7c4406;
+  --color-congestion-heavy: #a8360a;
+  --color-congestion-severe: #b91c1c;
+}
+
+@layer base {
+  body {
+    font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    background-color: var(--color-surface);
+    color: var(--color-text-primary);
+    transition: background-color 0.3s, color 0.3s;
+  }
+
+  .dark body,
+  .dark {
+    --color-surface: #10141f;
+    --color-surface-raised: #171d2b;
+    --color-surface-overlay: #20283a;
+    --color-surface-subtle: #1c2433;
+    --color-text-primary: #f8fafc;
+    --color-text-secondary: #cbd5e1;
+    --color-text-muted: #94a3b8;
+    --color-border: #334155;
+    --color-focus: #60a5fa;
+    --color-route-northbound: #60a5fa;
+    --color-route-southbound: #4ade80;
+    --color-map-marker: #e2e8f0;
+    --color-map-marker-contrast: #10141f;
+    --color-toggle-thumb: #334155;
+    --color-toggle-shadow: rgba(0, 0, 0, 0.35);
+    --color-toggle-icon-sun: #fbbf24;
+    --color-toggle-icon-moon: #bfdbfe;
+    --color-congestion-light: #4ade80;
+    --color-congestion-moderate: #facc15;
+    --color-congestion-heavy: #fb923c;
+    --color-congestion-severe: #f87171;
+  }
+}
+
+/* Subtle dot pattern */
+.textured {
+  background-image: radial-gradient(circle, var(--color-border) 0.8px, transparent 0.8px);
+  background-size: 24px 24px;
+}
+
+/* Display heading — same family, heavy weight */
+.font-display {
+  font-family: 'Plus Jakarta Sans', system-ui, sans-serif;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* Card base */
+.card {
+  background-color: var(--color-surface-raised);
+  border: 1px solid var(--color-border);
+  border-radius: 1rem;
+  transition: background-color 0.3s, border-color 0.3s;
+}
+
+/* Congestion color utilities */
+.congestion-light { --c: var(--color-congestion-light); }
+.congestion-moderate { --c: var(--color-congestion-moderate); }
+.congestion-heavy { --c: var(--color-congestion-heavy); }
+.congestion-severe { --c: var(--color-congestion-severe); }
+
+.dark .leaflet-tooltip {
+  background: var(--color-surface-overlay);
+  color: var(--color-text-primary);
+  border-color: var(--color-border);
+}
+
+/* Scrollbar minimal */
+::-webkit-scrollbar { width: 6px; height: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: var(--color-border); border-radius: 3px; }
+
+/* WCAG 2.3.3: Respect reduced motion preference */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}

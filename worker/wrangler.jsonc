@@ -1,0 +1,30 @@
+{
+	"name": "traffic-lb",
+	"main": "index.ts",
+	"compatibility_date": "2025-05-01",
+	"compatibility_flags": [
+		"nodejs_compat"
+	],
+	"assets": {
+		"directory": "../dist",
+		"not_found_handling": "single-page-application"
+	},
+	"triggers": {
+		"crons": [
+			"*/10 * * * *"
+		]
+	},
+	"d1_databases": [
+		{
+			"binding": "DB",
+			"database_name": "traffic-lb-db",
+            "database_id": "d4b16af6-4347-477c-828e-f2c35eba85b6",
+			"remote": true
+		}
+	],
+	"observability": {
+		"enabled": true
+	},
+	"workers_dev": true,
+	"preview_urls": false
+}

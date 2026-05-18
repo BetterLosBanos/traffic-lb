@@ -1,0 +1,37 @@
+{
+  "name": "traffic-pansol",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.1.2",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:worker": "tsc -p worker/tsconfig.json --noEmit",
+    "worker:dev": "cd worker && wrangler dev",
+    "worker:deploy": "cd worker && wrangler deploy",
+    "deploy": "pnpm run build && pnpm run worker:deploy",
+    "collect:local": "curl -s http://localhost:8787/api/debug/collect | python3 -m json.tool",
+    "migrate": "cd worker && wrangler d1 migrations apply traffic-pansol-db --local",
+    "migrate:remote": "cd worker && wrangler d1 migrations apply traffic-pansol-db --remote"
+  },
+  "dependencies": {
+    "hono": "^4.12.19",
+    "lucide-react": "^1.16.0",
+    "maplibre-gl": "^5.24.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260516.1",
+    "@tailwindcss/vite": "^4.3.0",
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "@vitejs/plugin-react": "^4.7.0",
+    "tailwindcss": "^4.3.0",
+    "typescript": "^5.9.3",
+    "vite": "^6.4.2",
+    "wrangler": "^4.92.0"
+  }
+}

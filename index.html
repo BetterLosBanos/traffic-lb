@@ -1,0 +1,38 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Traffic Ba Sa LB?</title>
+    <meta name="description" content="Live traffic updates around Los Baños major corridors" />
+    <meta name="theme-color" content="#10141f" />
+    <link
+      rel="icon"
+      type="image/svg+xml"
+      href="/logos/svg/betterlb-logo-inverted.svg"
+    />
+    <link
+      rel="icon"
+      type="image/png"
+      sizes="180x180"
+      href="/logos/png/betterlb-banner-inverted.png"
+    />
+    <link
+      rel="apple-touch-icon"
+      sizes="180x180"
+      href="/logos/png/betterlb-banner-inverted.png"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+    <script>
+      // Prevent FOUC — apply dark mode before paint
+      const dark = localStorage.getItem('theme') === 'dark' || (!localStorage.getItem('theme') && window.matchMedia('(prefers-color-scheme: dark)').matches)
+      document.documentElement.classList.toggle('dark', dark)
+    </script>
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
