@@ -30,6 +30,14 @@
   --color-congestion-heavy: var(--color-kapwa-orange-600);
   --color-congestion-severe: var(--color-kapwa-text-danger);
 
+  /* Incident badges */
+  --color-incident-moderate-text: var(--color-kapwa-yellow-800);
+  --color-incident-moderate-bg: color-mix(in srgb, var(--color-kapwa-yellow-400) 24%, transparent);
+  --color-incident-major-text: var(--color-kapwa-orange-800);
+  --color-incident-major-bg: color-mix(in srgb, var(--color-kapwa-orange-500) 18%, transparent);
+  --color-incident-severe-text: var(--color-kapwa-red-800);
+  --color-incident-severe-bg: color-mix(in srgb, var(--color-kapwa-red-600) 14%, transparent);
+
   /* Toggle */
   --color-toggle-thumb: var(--color-kapwa-neutral-50);
   --color-toggle-shadow: hsla(210, 9%, 13%, 0.22);
@@ -60,6 +68,12 @@
     --color-congestion-moderate: var(--color-kapwa-yellow-400);
     --color-congestion-heavy: var(--color-kapwa-orange-400);
     --color-congestion-severe: var(--color-kapwa-red-400);
+    --color-incident-moderate-text: var(--color-kapwa-yellow-300);
+    --color-incident-moderate-bg: color-mix(in srgb, var(--color-kapwa-yellow-400) 18%, transparent);
+    --color-incident-major-text: var(--color-kapwa-orange-300);
+    --color-incident-major-bg: color-mix(in srgb, var(--color-kapwa-orange-500) 14%, transparent);
+    --color-incident-severe-text: var(--color-kapwa-red-300);
+    --color-incident-severe-bg: color-mix(in srgb, var(--color-kapwa-red-600) 12%, transparent);
     --color-toggle-thumb: var(--color-kapwa-gray-700);
     --color-toggle-shadow: hsla(0, 0%, 0%, 0.35);
     --color-toggle-icon-sun: var(--color-kapwa-yellow-400);

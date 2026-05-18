@@ -50,22 +50,22 @@ function severityBadgeStyle(severity: string) {
 
   if (rank >= 5) {
     return {
-      color: 'var(--color-kapwa-red-700)',
-      backgroundColor: 'color-mix(in srgb, var(--color-kapwa-red-600) 14%, transparent)',
+      color: 'var(--color-incident-severe-text)',
+      backgroundColor: 'var(--color-incident-severe-bg)',
     }
   }
 
   if (rank >= 4) {
     return {
-      color: 'var(--color-kapwa-orange-700)',
-      backgroundColor: 'color-mix(in srgb, var(--color-kapwa-orange-500) 18%, transparent)',
+      color: 'var(--color-incident-major-text)',
+      backgroundColor: 'var(--color-incident-major-bg)',
     }
   }
 
   if (rank >= 3) {
     return {
-      color: 'var(--color-kapwa-yellow-700)',
-      backgroundColor: 'color-mix(in srgb, var(--color-kapwa-yellow-400) 24%, transparent)',
+      color: 'var(--color-incident-moderate-text)',
+      backgroundColor: 'var(--color-incident-moderate-bg)',
     }
   }
 
