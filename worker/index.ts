@@ -86,9 +86,6 @@ const INCIDENTS_BBOX = (() => {
 
 // How old before data is considered stale (ms) — 30 minutes
 const STALE_THRESHOLD_MS = 30 * 60 * 1000
-const COLLECTION_TIME_ZONE = 'Asia/Manila'
-const COLLECTION_START_HOUR = 5
-const COLLECTION_END_HOUR = 23
 
 function getCongestionLevel(ratio: number): string {
   if (ratio < 1.25) return 'light'
@@ -118,15 +115,7 @@ function parseHistoryHours(value: string | undefined): number {
   return Math.min(Math.max(parsed, 1), 168)
 }
 
-function shouldCollectNow(date = new Date()): boolean {
-  const hour = Number(new Intl.DateTimeFormat('en-US', {
-    timeZone: COLLECTION_TIME_ZONE,
-    hour: 'numeric',
-    hourCycle: 'h23',
-  }).format(date))
 
-  return hour >= COLLECTION_START_HOUR && hour < COLLECTION_END_HOUR
-}
 
 // ─── TomTom API Calls ────────────────────────────────────────────
 
@@ -194,7 +183,14 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
 
 // ─── Cron: Collect Traffic Data ──────────────────────────────────
 
+const RETENTION_DAYS = 14
+
 async function collectTraffic(env: Env) {
+  // Purge stale data before collecting new samples
+  await env.DB.prepare(
+    `DELETE FROM traffic_samples WHERE created_at < datetime('now', ?)`,
+  ).bind(`-${RETENTION_DAYS} days`).run()
+
   const incidents = await fetchIncidents(env)
 
   for (const corridor of CORRIDORS) {
