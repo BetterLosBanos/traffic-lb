@@ -21,10 +21,11 @@ interface RouteResult {
 
 interface Incident {
   type: string
-  severity: string
-  description: string
-  roadName: string
+  severity: string       // mapped from magnitudeOfDelay
+  description: string    // from first event description
+  roadName: string       // from first roadNumber or empty
   from: string
+  to: string
   lat?: number
   lng?: number
 }
@@ -159,24 +160,57 @@ async function fetchRoute(env: Env, origin: { lat: number; lng: number }, dest: 
 }
 
 async function fetchIncidents(env: Env): Promise<Incident[]> {
-  const fields = encodeURIComponent('{incidents{type,severity,from,description,roadName,geometry{type,coordinates}}}')
-  const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${env.TOMTOM_API_KEY}&bbox=${INCIDENTS_BBOX}&fields=${fields}&language=en&categoryFilter=accident,congestion,roadWork`
+  // v5 API: fields nested under properties{}, descriptions in events[], categoryFilter uses PascalCase
+  const fields = encodeURIComponent('{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description,iconCategory},from,to,roadNumbers,delay,length}}}')
+  const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${env.TOMTOM_API_KEY}&bbox=${INCIDENTS_BBOX}&fields=${fields}&language=en-US&t=1111&timeValidityFilter=present`
 
   const res = await fetch(url)
-  if (!res.ok) return []
+  if (!res.ok) {
+    const body = await res.text()
+    console.error(`Incidents API ${res.status}: ${body.slice(0, 200)}`)
+    return []
+  }
+
+  const MAGNITUDE_LABEL: Record<number, string> = {
+    0: 'unknown',
+    1: 'minor',
+    2: 'moderate',
+    3: 'major',
+    4: 'severe',
+  }
+
+  const ICON_CATEGORY_LABEL: Record<number, string> = {
+    0: 'Unknown', 1: 'Accident', 2: 'Fog', 3: 'Dangerous Conditions',
+    4: 'Rain', 5: 'Ice', 6: 'Jam', 7: 'Lane Closed',
+    8: 'Road Closed', 9: 'Road Works', 10: 'Wind', 11: 'Flooding',
+    14: 'Broken Down Vehicle',
+  }
 
   const data = await res.json() as any
   const incidents = data?.incidents ?? []
 
   return incidents.map((inc: any) => {
-    const geom = inc.geometry?.coordinates // [lng, lat]
+    const props = inc.properties ?? {}
+    const geom = inc.geometry?.coordinates // Point: [lng,lat] or LineString: [[lng,lat],...]
+    const events = props.events ?? []
+    const roadNums = props.roadNumbers ?? []
+
+    let lat: number | undefined
+    let lng: number | undefined
+    if (geom) {
+      const coord = Array.isArray(geom[0]) ? geom[0] : geom  // LineString or Point
+      lng = coord[0]
+      lat = coord[1]
+    }
+
     return {
-      type: inc.type ?? 'Unknown',
-      severity: inc.severity ?? 'unknown',
-      description: inc.description ?? '',
-      roadName: inc.roadName ?? '',
-      from: inc.from ?? '',
-      ...(geom ? { lat: geom[1], lng: geom[0] } : {}),
+      type: ICON_CATEGORY_LABEL[props.iconCategory] ?? 'Unknown',
+      severity: MAGNITUDE_LABEL[props.magnitudeOfDelay] ?? 'unknown',
+      description: events[0]?.description ?? '',
+      roadName: roadNums[0] ?? '',
+      from: props.from ?? '',
+      to: props.to ?? '',
+      ...(lat != null && lng != null ? { lat, lng } : {}),
     }
   })
 }

@@ -17,6 +17,7 @@
     "migrate:remote": "cd worker && wrangler d1 migrations apply traffic-lb-db --remote"
   },
   "dependencies": {
+    "@bettergov/kapwa": "^1.2.4",
     "hono": "^4.12.19",
     "lucide-react": "^1.16.0",
     "maplibre-gl": "^5.24.0",

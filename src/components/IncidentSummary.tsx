@@ -85,7 +85,7 @@ export default function IncidentSummary({ incidents }: Props) {
               <p className="font-medium">
                 {normalizeText(inc.type)}
                 {inc.from && (
-                  <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}> near {inc.from}</span>
+                  <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}> near {inc.from}{inc.to ? ` → ${inc.to}` : ''}</span>
                 )}
                 {inc.roadName && (
                   <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}> · {inc.roadName}</span>

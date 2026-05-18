@@ -29,6 +29,7 @@ export interface Incident {
   description: string
   roadName: string
   from: string
+  to: string
   lat?: number
   lng?: number
 }
