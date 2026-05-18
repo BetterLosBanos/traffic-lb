@@ -73,7 +73,7 @@ function DirectionRow({ dir, label, onZoom }: DirectionRowProps) {
   )
 }
 
-interface Props {
+interface TrafficCardProps {
   corridorId: string
   label: string
   forward: CorridorDirection | undefined
@@ -83,7 +83,7 @@ interface Props {
   onDirectionZoom?: (dirKey: string) => void
 }
 
-export default function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, onDirectionZoom }: Props) {
+export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, onDirectionZoom }: TrafficCardProps) {
   const corridorColor = CORRIDOR_COLORS[corridorId] ?? 'var(--color-congestion-light)'
 
   const levels: CorridorDirection['congestionLevel'][] = [forward, reverse].filter(Boolean).map(d => d!.congestionLevel)

@@ -9,7 +9,7 @@ interface RouteMapProps {
   flyTo?: { lat: number; lng: number } | null
 }
 
-export default function RouteMap({ corridors, flyTo }: RouteMapProps) {
+export function RouteMap({ corridors, flyTo }: RouteMapProps) {
   return (
     <div className="card p-4 overflow-hidden">
       <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>

@@ -1,7 +1,7 @@
 import { Sun, Moon } from 'lucide-react'
 import { useState, useEffect } from 'react'
 
-export default function ThemeToggle() {
+export function ThemeToggle() {
   const [dark, setDark] = useState(() =>
     typeof document !== 'undefined' && document.documentElement.classList.contains('dark')
   )

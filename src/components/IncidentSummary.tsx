@@ -2,7 +2,7 @@ import { AlertTriangle } from 'lucide-react'
 import type { Incident } from '../lib/types'
 import { ageText, durationSinceText } from '../lib/time'
 
-interface Props {
+interface IncidentSummaryProps {
   incidents: Incident[]
   onIncidentClick?: (inc: Incident) => void
 }
@@ -92,7 +92,7 @@ function incidentTiming(inc: Incident) {
   return { label: 'Start time unavailable', color: 'var(--color-text-muted)' }
 }
 
-export default function IncidentSummary({ incidents, onIncidentClick }: Props) {
+export function IncidentSummary({ incidents, onIncidentClick }: IncidentSummaryProps) {
   if (incidents.length === 0) return null
 
   const worstColor = worstSeverityColor(incidents)

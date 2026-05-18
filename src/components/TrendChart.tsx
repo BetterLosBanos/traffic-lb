@@ -6,7 +6,7 @@ import { CORRIDORS, CORRIDOR_COLORS } from '../lib/types'
 type TrendRange = '3h' | '12h' | '24h'
 type TrendMetric = 'multiplier' | 'delay'
 
-interface Props {
+interface TrendChartProps {
   history: HistoryBucket[]
   samples: TrafficSamplePoint[]
   range: TrendRange
@@ -111,7 +111,7 @@ function getSeriesLabel(dirKey: string): string {
   return corridor ? (isForward ? corridor.forwardLabel : corridor.reverseLabel) : dirKey
 }
 
-export default function TrendChart({ history, samples, range, onRangeChange }: Props) {
+export function TrendChart({ history, samples, range, onRangeChange }: TrendChartProps) {
   const [metric, setMetric] = useState<TrendMetric>('multiplier')
 
   const sourceData = range === '3h' ? samples : history

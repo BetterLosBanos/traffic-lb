@@ -1,10 +1,10 @@
 import { useState, useEffect, useCallback } from 'react'
 import { Car, RefreshCw } from 'lucide-react'
-import TrafficCard from './components/TrafficCard'
-import TrendChart from './components/TrendChart'
-import RouteMap from './components/RouteMap'
-import IncidentSummary from './components/IncidentSummary'
-import ThemeToggle from './components/ThemeToggle'
+import { TrafficCard } from './components/TrafficCard'
+import { TrendChart } from './components/TrendChart'
+import { RouteMap } from './components/RouteMap'
+import { IncidentSummary } from './components/IncidentSummary'
+import { ThemeToggle } from './components/ThemeToggle'
 import { fetchLatest, fetchHistory, fetchSamples } from './lib/api'
 import { CORRIDORS } from './lib/types'
 import { ageText } from './lib/time'
@@ -76,7 +76,8 @@ export default function App() {
         setSamples([])
       }
       setError(null)
-    } catch {
+    } catch (err) {
+      console.error('[traffic-lb] Failed to fetch traffic data:', err)
       setError('Unable to load traffic data')
     } finally {
       setLoading(false)
