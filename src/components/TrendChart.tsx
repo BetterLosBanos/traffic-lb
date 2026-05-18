@@ -35,10 +35,20 @@ function secondsToMinutes(seconds: number) {
   return Math.round(seconds / 60)
 }
 
-function extractValue(entry: any, metric: TrendMetric): number | null {
+interface HistoryDirData {
+  avg_delay: number
+  avg_ratio: number
+}
+
+interface SampleDirData {
+  delay_seconds: number
+  congestion_ratio: number
+}
+
+function extractValue(entry: HistoryDirData | SampleDirData | undefined, metric: TrendMetric): number | null {
   if (!entry) return null
-  if (metric === 'delay') return secondsToMinutes(entry.delay_seconds ?? entry.avg_delay)
-  return entry.congestion_ratio ?? entry.avg_ratio
+  if (metric === 'delay') return secondsToMinutes('delay_seconds' in entry ? entry.delay_seconds : entry.avg_delay)
+  return 'congestion_ratio' in entry ? entry.congestion_ratio : entry.avg_ratio
 }
 
 function formatTime(value: string, range: TrendRange) {
@@ -73,7 +83,7 @@ function formatValue(value: number, metric: TrendMetric) {
 }
 
 // Get dir keys from data — validate by suffix to avoid matching future non-direction object fields
-function getDirKeys(data: Record<string, any>[]): string[] {
+function getDirKeys(data: Record<string, unknown>[]): string[] {
   const keys = new Set<string>()
   for (const entry of data) {
     for (const key of Object.keys(entry)) {
@@ -114,7 +124,7 @@ export default function TrendChart({ history, samples, range, onRangeChange }: P
       key,
       label: getSeriesLabel(key),
       color: CORRIDOR_COLORS[getCorridorId(key)] ?? '#6b7280',
-      values: sourceData.map(entry => extractValue(entry[key], metric)),
+      values: sourceData.map(entry => extractValue(entry[key] as HistoryDirData | SampleDirData | undefined, metric)),
     })),
     [dirKeys, sourceData, metric]
   )

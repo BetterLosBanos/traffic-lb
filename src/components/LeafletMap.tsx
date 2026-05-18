@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import maplibregl, { Map as MapLibreMap } from 'maplibre-gl'
+import type { LayerSpecification, StyleSpecification } from 'maplibre-gl'
 import { CORRIDOR_ENDPOINTS } from '../lib/route'
 import { CORRIDORS, CORRIDOR_COLORS } from '../lib/types'
 import type { CorridorDirection } from '../lib/types'
@@ -14,16 +15,16 @@ function decodePolyline(raw: string): [number, number][] {
 }
 
 // Build GeoJSON route sources and line layers from corridor data
-function buildRouteSources(corridors?: Record<string, CorridorDirection>): Record<string, any> {
+function buildRouteSources(corridors?: Record<string, CorridorDirection>): Record<string, { type: 'geojson'; data: GeoJSON.FeatureCollection }> {
   if (!corridors) return {}
-  const sources: Record<string, any> = {}
+  const sources: Record<string, { type: 'geojson'; data: GeoJSON.FeatureCollection }> = {}
   for (const { id } of CORRIDORS) {
     const fwd = corridors[`${id}_f`]
     const rev = corridors[`${id}_r`]
     const fwdCoords = fwd?.route_polyline ? decodePolyline(fwd.route_polyline) : null
     const revCoords = rev?.route_polyline ? decodePolyline(rev.route_polyline) : null
     // Merge both directions into one source for the corridor
-    const features: any[] = []
+    const features: GeoJSON.Feature<GeoJSON.LineString, { dir: string }>[] = []
     if (fwdCoords) features.push({ type: 'Feature', properties: { dir: 'f' }, geometry: { type: 'LineString', coordinates: fwdCoords } })
     if (revCoords) features.push({ type: 'Feature', properties: { dir: 'r' }, geometry: { type: 'LineString', coordinates: revCoords } })
     if (features.length > 0) {
@@ -33,16 +34,16 @@ function buildRouteSources(corridors?: Record<string, CorridorDirection>): Recor
   return sources
 }
 
-function buildRouteLayers(corridors: Record<string, CorridorDirection> | undefined, dark: boolean): any[] {
+function buildRouteLayers(corridors: Record<string, CorridorDirection> | undefined, dark: boolean): StyleSpecification['layers'] {
   if (!corridors) return []
-  const layers: any[] = []
+  const layers: NonNullable<StyleSpecification['layers']> = []
   for (const { id } of CORRIDORS) {
     if (!corridors[`${id}_f`]?.route_polyline && !corridors[`${id}_r`]?.route_polyline) continue
     layers.push({
       id: `route-line-${id}`,
-      type: 'line',
+      type: 'line' as const,
       source: `route-${id}`,
-      layout: { 'line-join': 'round', 'line-cap': 'round' },
+      layout: { 'line-join': 'round' as const, 'line-cap': 'round' as const },
       paint: {
         'line-color': CORRIDOR_COLORS[id] ?? '#6b7280',
         'line-width': ['interpolate', ['linear'], ['zoom'], 13, 2, 14, 3.5, 15, 5],
@@ -129,7 +130,7 @@ export default function LeafletMap({ corridors, flyTo: flyTarget }: LeafletMapPr
 
     ;(async () => {
       // Load official TomTom incident style: geometry layers + POI icon layers
-      let incidentLayers: any[] = []
+      let incidentLayers: StyleSpecification['layers'] = []
       let incidentSprite = ''
       let incidentGlyphs = ''
       if (tomtomKey) {
@@ -138,7 +139,7 @@ export default function LeafletMap({ corridors, flyTo: flyTarget }: LeafletMapPr
         if (resp.ok) {
           const official = await resp.json()
           incidentLayers = official.layers
-            .map((l: any) => ({ ...l, source: 'tomtom-incidents' }))
+            .map((l: StyleSpecification['layers'][number]) => ({ ...l, source: 'tomtom-incidents' }))
           incidentSprite = official.sprite ?? ''
           incidentGlyphs = official.glyphs ?? ''
         }
@@ -167,7 +168,7 @@ export default function LeafletMap({ corridors, flyTo: flyTarget }: LeafletMapPr
       ctx.fill()
       const pinImage = ctx.getImageData(0, 0, pinCanvas.width, pinCanvas.height)
 
-      const style: any = {
+      const style: StyleSpecification = {
         version: 8,
         ...(incidentSprite ? { sprite: incidentSprite } : {}),
         ...(incidentGlyphs ? { glyphs: incidentGlyphs } : {}),
@@ -242,22 +243,22 @@ export default function LeafletMap({ corridors, flyTo: flyTarget }: LeafletMapPr
                 'line-opacity': dark ? 0.9 : 0.8,
               },
             },
-          ] : []),
+          ] as LayerSpecification[] : []),
           // Route lines from TomTom routing
           ...buildRouteLayers(corridors, dark),
           {
             id: 'waypoint-pins',
-            type: 'symbol',
+            type: 'symbol' as const,
             source: 'waypoints',
             layout: {
               'icon-image': 'pin',
               'icon-size': 0.9,
-              'icon-anchor': 'bottom',
+              'icon-anchor': 'bottom' as const,
               'icon-allow-overlap': true,
               'text-field': ['get', 'label'],
               'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
               'text-size': 12,
-              'text-anchor': 'top',
+              'text-anchor': 'top' as const,
               'text-offset': [0, 0.2],
               'text-optional': true,
             },
@@ -274,7 +275,7 @@ export default function LeafletMap({ corridors, flyTo: flyTarget }: LeafletMapPr
       map.setStyle(style)
       map.once('styledata', () => {
         if (!map.hasImage('pin')) {
-          map.addImage('pin', pinImage as any, { pixelRatio: 2 })
+          map.addImage('pin', pinImage as unknown as Parameters<MapLibreMap['addImage']>[1])
         }
         if (map.isStyleLoaded()) map.fitBounds(ALL_BOUNDS, { padding: 30 })
       })

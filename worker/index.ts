@@ -1,5 +1,16 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import type {
+  CongestionLevel,
+  Incident,
+  IncidentProbability,
+  IncidentSeverity,
+  IncidentTimeValidity,
+  TomTomIncident,
+  TomTomIncidentsResponse,
+  TomTomRouteLeg,
+  TomTomRouteResponse,
+} from '../src/lib/types'
 
 // ─── Types ───────────────────────────────────────────────────────
 
@@ -19,26 +30,48 @@ interface RouteResult {
   route_polyline: string | null
 }
 
-type IncidentProbability = 'certain' | 'probable' | 'risk_of' | 'improbable'
-type IncidentTimeValidity = 'present' | 'future'
+// D1 row types — snake_case, matching DB columns
 
-interface Incident {
-  id?: string
-  type: string
-  severity: string       // mapped from magnitudeOfDelay
-  description: string    // from first event description
-  roadName: string       // from first roadNumber or empty
-  from: string
-  to: string
-  started_at?: string
-  ends_at?: string
-  last_reported_at?: string
-  time_validity?: IncidentTimeValidity
-  probability?: IncidentProbability
-  report_count?: number
-  has_expired_end_time?: boolean
-  lat?: number
-  lng?: number
+interface HealthRow {
+  total_samples: number
+  last_collection: string | null
+  last_successful_collection: string | null
+  error_count: number
+  last_error_message: string | null
+}
+
+interface LatestSampleRow {
+  id: number
+  direction: string
+  duration_seconds: number
+  no_traffic_seconds: number
+  historic_seconds: number | null
+  delay_seconds: number
+  congestion_ratio: number
+  distance_meters: number
+  route_polyline: string | null
+  incidents: string | null
+  api_status: string
+  created_at: string
+}
+
+interface HistoryRow {
+  direction: string
+  hour: string
+  avg_duration: number
+  avg_no_traffic: number
+  avg_ratio: number
+  avg_delay: number
+  sample_count: number
+}
+
+interface SampleRow {
+  direction: string
+  time: string
+  duration_seconds: number
+  no_traffic_seconds: number
+  congestion_ratio: number
+  delay_seconds: number
 }
 
 // ─── Corridors ───────────────────────────────────────────────────
@@ -99,7 +132,7 @@ const INCIDENTS_BBOX = (() => {
 // How old before data is considered stale (ms) — 30 minutes
 const STALE_THRESHOLD_MS = 30 * 60 * 1000
 
-function getCongestionLevel(ratio: number): string {
+function getCongestionLevel(ratio: number): CongestionLevel {
   if (ratio < 1.25) return 'light'
   if (ratio < 1.75) return 'moderate'
   if (ratio < 2.5) return 'heavy'
@@ -148,14 +181,14 @@ async function fetchRoute(env: Env, origin: { lat: number; lng: number }, dest: 
     throw new Error(`Routing API ${res.status}: ${body.slice(0, 200)}`)
   }
 
-  const data = await res.json() as any
+  const data = (await res.json()) as TomTomRouteResponse
   const route = data.routes?.[0]
   const summary = route?.summary
-  if (!summary) throw new Error('No route in response')
+  if (!summary) throw new Error(`No route in TomTom response for ${origin.lat},${origin.lng} → ${dest.lat},${dest.lng}`)
 
-  const duration = summary.travelTimeInSeconds as number
-  const noTraffic = (summary.noTrafficTravelTimeInSeconds ?? duration) as number
-  const points = route?.legs?.flatMap((l: any) => l.points ?? []) ?? []
+  const duration = summary.travelTimeInSeconds
+  const noTraffic = summary.noTrafficTravelTimeInSeconds ?? duration
+  const points = route?.legs?.flatMap((l: TomTomRouteLeg) => l.points ?? []) ?? []
   const encodedPolyline = points.length > 0 ? encodeFlexiblePolyline(points) : null
 
   return {
@@ -164,7 +197,7 @@ async function fetchRoute(env: Env, origin: { lat: number; lng: number }, dest: 
     historic_seconds: summary.historicTrafficTravelTimeInSeconds ?? null,
     delay_seconds: duration - noTraffic,
     congestion_ratio: Math.round((duration / noTraffic) * 100) / 100,
-    distance_meters: summary.lengthInMeters as number,
+    distance_meters: summary.lengthInMeters,
     traffic_delay_seconds: summary.trafficDelayInSeconds ?? 0,
     route_polyline: encodedPolyline,
   }
@@ -178,11 +211,10 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
   const res = await fetch(url)
   if (!res.ok) {
     const body = await res.text()
-    console.error(`Incidents API ${res.status}: ${body.slice(0, 200)}`)
-    return []
+    throw new Error(`Incidents API ${res.status}: ${body.slice(0, 200)}`)
   }
 
-  const MAGNITUDE_LABEL: Record<number, string> = {
+  const MAGNITUDE_LABEL: Record<number, IncidentSeverity> = {
     0: 'unknown',
     1: 'minor',
     2: 'moderate',
@@ -197,7 +229,7 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
     14: 'Broken Down Vehicle',
   }
 
-  const data = await res.json() as any
+  const data = (await res.json()) as TomTomIncidentsResponse
   const incidents = data?.incidents ?? []
   const cleanString = (v: unknown) => (typeof v === 'string' && v !== 'null' && v !== '') ? v : undefined
   const cleanNumber = (v: unknown) => (typeof v === 'number' && Number.isFinite(v)) ? v : undefined
@@ -208,7 +240,7 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
     v === 'certain' || v === 'probable' || v === 'risk_of' || v === 'improbable' ? v : undefined
   )
 
-  return incidents.map((inc: any) => {
+  return incidents.map((inc: TomTomIncident) => {
     const props = inc.properties ?? {}
     const geom = inc.geometry?.coordinates // Point: [lng,lat] or LineString: [[lng,lat],...]
     const events = props.events ?? []
@@ -218,8 +250,8 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
     let lng: number | undefined
     if (geom) {
       const coord = Array.isArray(geom[0]) ? geom[0] : geom  // LineString or Point
-      lng = coord[0]
-      lat = coord[1]
+      lng = (coord as number[])[0]
+      lat = (coord as number[])[1]
     }
 
     const startedAt = cleanString(props.startTime)
@@ -229,8 +261,8 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
 
     return {
       id: cleanString(props.id),
-      type: ICON_CATEGORY_LABEL[props.iconCategory] ?? 'Unknown',
-      severity: MAGNITUDE_LABEL[props.magnitudeOfDelay] ?? 'unknown',
+      type: ICON_CATEGORY_LABEL[props.magnitudeOfDelay ?? 0] ?? 'Unknown',
+      severity: MAGNITUDE_LABEL[props.magnitudeOfDelay ?? 0] ?? 'unknown',
       description: events[0]?.description ?? '',
       roadName: roadNums[0] ?? '',
       from: props.from ?? '',
@@ -251,13 +283,19 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
 
 const RETENTION_DAYS = 14
 
-async function collectTraffic(env: Env) {
+async function collectTraffic(env: Env): Promise<void> {
   // Purge stale data before collecting new samples
   await env.DB.prepare(
     `DELETE FROM traffic_samples WHERE created_at < datetime('now', ?)`,
   ).bind(`-${RETENTION_DAYS} days`).run()
 
-  const incidents = await fetchIncidents(env)
+  let incidents: Incident[] = []
+  try {
+    incidents = await fetchIncidents(env)
+  } catch (error) {
+    console.error('[collectTraffic] incidents fetch failed:', error)
+    // Continue without incidents — don't block route data collection
+  }
 
   for (const corridor of CORRIDORS) {
     for (const direction of ['f', 'r'] as const) {
@@ -268,7 +306,7 @@ async function collectTraffic(env: Env) {
         ? (direction === 'f' ? corridor.waypoints : [...corridor.waypoints].reverse())
         : undefined
 
-      let apiStatus = 'ok'
+      let apiStatus: 'ok' | 'error' = 'ok'
       let errorMessage: string | null = null
       let route: RouteResult | null = null
 
@@ -332,7 +370,7 @@ app.get('/api/health', async (c) => {
     FROM traffic_samples
   `).all()
 
-  const row = results[0] as any
+  const row = results[0] as unknown as HealthRow
   return c.json({
     status: 'ok',
     total_samples: row.total_samples ?? 0,
@@ -358,13 +396,28 @@ app.get('/api/traffic/latest', async (c) => {
     return c.json({ status: 'no_data', corridors: {}, last_updated: null })
   }
 
-  const corridors: Record<string, any> = {}
+  const corridors: Record<string, {
+    direction: string
+    duration_seconds: number
+    no_traffic_seconds: number
+    historic_seconds: number | null
+    delay_seconds: number
+    congestion_ratio: number
+    congestion_level: CongestionLevel
+    distance_meters: number
+    route_polyline: string | null
+    incidents: Incident[]
+    api_status: string
+    collected_at: string
+    is_stale: boolean
+  }> = {}
 
-  for (const row of results as any[]) {
-    const dirKey = row.direction as string
-    const ratio = row.congestion_ratio as number
+  for (const rawRow of results) {
+    const row = rawRow as unknown as LatestSampleRow
+    const dirKey = row.direction
+    const ratio = row.congestion_ratio
     const level = getCongestionLevel(ratio)
-    const incidents = row.incidents ? JSON.parse(row.incidents as string) : []
+    const parsedIncidents = row.incidents ? JSON.parse(row.incidents) as Incident[] : []
     const ageMs = Date.now() - new Date(row.created_at + 'Z').getTime()
     const isStale = ageMs > STALE_THRESHOLD_MS
 
@@ -378,15 +431,15 @@ app.get('/api/traffic/latest', async (c) => {
       congestion_level: level,
       distance_meters: row.distance_meters,
       route_polyline: row.route_polyline ?? null,
-      incidents,
+      incidents: parsedIncidents,
       api_status: row.api_status,
-      collected_at: toISO(row.created_at),
+      collected_at: toISO(row.created_at) ?? '',
       is_stale: isStale,
     }
   }
 
-  const lastUpdated = (results as any[])
-    .map((r: any) => r.created_at)
+  const lastUpdated = (results as unknown as LatestSampleRow[])
+    .map((r) => r.created_at)
     .filter(Boolean)
     .sort()
     .pop() ?? null
@@ -419,16 +472,17 @@ app.get('/api/traffic/history', async (c) => {
   `).bind(`-${hours} hours`).all()
 
   // Group by hour
-  const buckets: Record<string, any> = {}
-  for (const row of results as any[]) {
+  const buckets: Record<string, { hour: string; [dirKey: string]: string | number | unknown }> = {}
+  for (const rawRow of results) {
+    const row = rawRow as unknown as HistoryRow
     const h = toISO(row.hour) as string
     if (!buckets[h]) {
       buckets[h] = { hour: h }
     }
-    buckets[h][row.direction as string] = {
+    buckets[h][row.direction] = {
       avg_duration: Math.round(row.avg_duration),
       avg_no_traffic: Math.round(row.avg_no_traffic),
-      avg_ratio: Math.round((row.avg_ratio as number) * 100) / 100,
+      avg_ratio: Math.round(row.avg_ratio * 100) / 100,
       avg_delay: Math.round(row.avg_delay),
       sample_count: row.sample_count,
     }
@@ -455,13 +509,14 @@ app.get('/api/traffic/samples', async (c) => {
     ORDER BY time, direction
   `).bind(`-${hours} hours`).all()
 
-  const buckets: Record<string, any> = {}
-  for (const row of results as any[]) {
+  const buckets: Record<string, { time: string; [dirKey: string]: string | number | unknown }> = {}
+  for (const rawRow of results) {
+    const row = rawRow as unknown as SampleRow
     const time = toISO(row.time) as string
     if (!buckets[time]) {
       buckets[time] = { time }
     }
-    buckets[time][row.direction as string] = {
+    buckets[time][row.direction] = {
       duration_seconds: row.duration_seconds,
       no_traffic_seconds: row.no_traffic_seconds,
       congestion_ratio: row.congestion_ratio,
@@ -486,7 +541,7 @@ app.post('/api/traffic/seed', async (c) => {
     delay_seconds: number
     congestion_ratio: number
     distance_meters?: number
-    incidents?: any[]
+    incidents?: Incident[]
   }>()
 
   if (!body.direction) {
@@ -516,7 +571,7 @@ app.post('/api/traffic/seed', async (c) => {
 // Debug: manual cron trigger for local development only
 app.get('/api/debug/collect', async (c) => {
   if (!isLocalRequest(c.req.url)) {
-    return c.json({ error: true, message: 'Debug collection is only available on localhost' }, 403)
+    return c.json({ error: 'Debug collection is only available on localhost' }, 403)
   }
 
   try {

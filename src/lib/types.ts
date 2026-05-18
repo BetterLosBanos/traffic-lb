@@ -1,3 +1,17 @@
+// ─── Union Types ────────────────────────────────────────────────
+
+export type CongestionLevel = 'light' | 'moderate' | 'heavy' | 'severe'
+
+export type IncidentType =
+  | 'Unknown' | 'Accident' | 'Fog' | 'Dangerous Conditions'
+  | 'Rain' | 'Ice' | 'Jam' | 'Lane Closed' | 'Road Closed'
+  | 'Road Works' | 'Wind' | 'Flooding' | 'Broken Down Vehicle'
+
+export type IncidentSeverity = 'unknown' | 'minor' | 'moderate' | 'major' | 'severe'
+export type ApiStatus = 'ok' | 'error' | 'seeded'
+export type IncidentProbability = 'certain' | 'probable' | 'risk_of' | 'improbable'
+export type IncidentTimeValidity = 'present' | 'future'
+
 // ─── Corridor Config (matches worker) ────────────────────────────
 
 export interface CorridorDef {
@@ -25,13 +39,10 @@ export const CORRIDOR_COLORS: Record<string, string> = {
 
 // ─── Direction Data (from /api/traffic/latest) ───────────────────
 
-export type IncidentProbability = 'certain' | 'probable' | 'risk_of' | 'improbable'
-export type IncidentTimeValidity = 'present' | 'future'
-
 export interface Incident {
   id?: string
-  type: string
-  severity: string
+  type: IncidentType | string
+  severity: IncidentSeverity | string
   description: string
   roadName: string
   from: string
@@ -54,11 +65,11 @@ export interface CorridorDirection {
   historic_seconds: number | null
   delay_seconds: number
   congestion_ratio: number
-  congestion_level: 'light' | 'moderate' | 'heavy' | 'severe'
+  congestion_level: CongestionLevel
   distance_meters: number
   route_polyline: string | null
   incidents: Incident[]
-  api_status: string
+  api_status: ApiStatus
   collected_at: string
   is_stale: boolean
 }
@@ -71,14 +82,29 @@ export interface LatestResponse {
   last_updated: string | null
 }
 
+export interface DirectionHistoryData {
+  avg_duration: number
+  avg_no_traffic: number
+  avg_ratio: number
+  avg_delay: number
+  sample_count: number
+}
+
 export interface HistoryBucket {
   hour: string
-  [dirKey: string]: any
+  [dirKey: string]: string | DirectionHistoryData | undefined
+}
+
+export interface DirectionSampleData {
+  duration_seconds: number
+  no_traffic_seconds: number
+  congestion_ratio: number
+  delay_seconds: number
 }
 
 export interface TrafficSamplePoint {
   time: string
-  [dirKey: string]: any
+  [dirKey: string]: string | DirectionSampleData | undefined
 }
 
 export interface HealthResponse {
@@ -88,4 +114,56 @@ export interface HealthResponse {
   last_successful_collection: string | null
   error_count: number
   last_error_message: string | null
+}
+
+// ─── TomTom API Response Types ───────────────────────────────────
+
+export interface TomTomRouteResponse {
+  routes?: TomTomRoute[]
+  formatVersion?: string
+}
+
+export interface TomTomRoute {
+  summary: TomTomRouteSummary
+  legs?: TomTomRouteLeg[]
+}
+
+export interface TomTomRouteSummary {
+  travelTimeInSeconds: number
+  noTrafficTravelTimeInSeconds?: number
+  historicTrafficTravelTimeInSeconds?: number
+  lengthInMeters: number
+  trafficDelayInSeconds?: number
+}
+
+export interface TomTomRouteLeg {
+  points?: { latitude: number; longitude: number }[]
+}
+
+export interface TomTomIncidentsResponse {
+  incidents?: TomTomIncident[]
+}
+
+export interface TomTomIncident {
+  type?: string
+  geometry?: { type: string; coordinates: number[] | number[][] }
+  properties?: TomTomIncidentProperties
+}
+
+export interface TomTomIncidentProperties {
+  id?: string
+  iconCategory?: number
+  magnitudeOfDelay?: number
+  events?: { description?: string; iconCategory?: number }[]
+  startTime?: string
+  endTime?: string
+  from?: string
+  to?: string
+  roadNumbers?: string[]
+  delay?: number
+  length?: number
+  timeValidity?: string
+  probabilityOfOccurrence?: string
+  numberOfReports?: number
+  lastReportTime?: string
 }
