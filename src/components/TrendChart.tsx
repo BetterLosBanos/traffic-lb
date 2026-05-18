@@ -260,7 +260,7 @@ export default function TrendChart({ history, samples, range, onRangeChange }: P
               )
             })}
 
-            {series.map((s, si) => {
+            {series.map((s) => {
               const line = buildLine(s.values)
               const areas = buildAreas(s.values)
               const gaps = buildGapBridges(s.values)
@@ -298,7 +298,7 @@ export default function TrendChart({ history, samples, range, onRangeChange }: P
       )}
 
       <div className="flex flex-wrap gap-x-5 gap-y-2 mt-3 text-sm" style={{ color: 'var(--color-text-muted)' }}>
-        {series.map((s, si) => {
+        {series.map((s) => {
           const latest = latestPoint(s.values)
           const isReverse = s.key.endsWith('_r')
           const dash = isReverse ? '8 4' : undefined

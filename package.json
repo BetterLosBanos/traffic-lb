@@ -1,5 +1,5 @@
 {
-  "name": "traffic-pansol",
+  "name": "traffic-lb",
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.1.2",
@@ -13,8 +13,8 @@
     "worker:deploy": "cd worker && wrangler deploy",
     "deploy": "pnpm run build && pnpm run worker:deploy",
     "collect:local": "curl -s http://localhost:8787/api/debug/collect | python3 -m json.tool",
-    "migrate": "cd worker && wrangler d1 migrations apply traffic-pansol-db --local",
-    "migrate:remote": "cd worker && wrangler d1 migrations apply traffic-pansol-db --remote"
+    "migrate": "cd worker && wrangler d1 migrations apply traffic-lb-db --local",
+    "migrate:remote": "cd worker && wrangler d1 migrations apply traffic-lb-db --remote"
   },
   "dependencies": {
     "hono": "^4.12.19",

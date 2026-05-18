@@ -1,9 +1,23 @@
 node_modules/
 dist/
 .wrangler/
-.worker-next/
+.worker-tmp/
 .env
 .env.local
 .dev.vars
 *.local
 .DS_Store
+
+# AI / agent artifacts
+AGENTS.md
+.claude/
+.cursor/
+.copilot/
+.aider*
+.windsurf*
+.codeium*
+continue/
+.devai/
+.hermes/
+.agents/
+.codex/
