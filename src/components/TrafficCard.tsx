@@ -35,8 +35,8 @@ function DirectionRow({ dir, label, onZoom }: DirectionRowProps) {
 
   return (
     <div
-      className={`grid grid-cols-[5rem_1fr] gap-3 py-3 border-b last:border-b-0${onZoom ? ' cursor-pointer hover:opacity-80 active:opacity-60' : ''}`}
-      style={{ borderColor: 'var(--color-border)', opacity: dir.is_stale ? 0.75 : 1 }}
+      className={`grid grid-cols-[5rem_1fr] gap-3 py-3 border-b last:border-b-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2${onZoom ? ' cursor-pointer hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.07]' : ''}`}
+      style={{ borderColor: 'var(--color-border)', opacity: dir.is_stale ? 0.75 : 1, outlineColor: 'var(--color-focus)' }}
       role={onZoom ? 'button' : undefined}
       tabIndex={onZoom ? 0 : undefined}
       onClick={onZoom}
@@ -103,7 +103,7 @@ export default function TrafficCard({ corridorId, label, forward, reverse, forwa
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center gap-2">
-          <span className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: corridorColor }} />
+          <span className="w-2 h-2 rounded-full flex-shrink-0 opacity-70" style={{ backgroundColor: corridorColor }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
         </div>
         {staleText && (

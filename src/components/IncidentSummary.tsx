@@ -1,5 +1,6 @@
 import { AlertTriangle } from 'lucide-react'
 import type { Incident } from '../lib/types'
+import { ageText, durationSinceText } from '../lib/time'
 
 interface Props {
   incidents: Incident[]
@@ -18,48 +19,91 @@ const SEVERITY_RANK: Record<string, number> = {
   critical: 5,
 }
 
-function normalizeText(value: string) {
-  const normalized = value.trim().toLowerCase().replace(/_/g, ' ')
+function normalizeKey(value: string) {
+  return value.trim().toLowerCase().replace(/_/g, ' ')
+}
+
+function toDisplay(value: string) {
+  const normalized = normalizeKey(value)
   if (!normalized) return ''
   return normalized.charAt(0).toUpperCase() + normalized.slice(1)
 }
 
-function severityKey(severity: string) {
-  return severity.trim().toLowerCase().replace(/_/g, ' ') || 'unknown'
+function severityRank(severity: string) {
+  return SEVERITY_RANK[normalizeKey(severity) || 'unknown'] ?? SEVERITY_RANK.unknown
 }
 
 function hasKnownSeverity(severity: string) {
-  return severityKey(severity) !== 'unknown'
+  return normalizeKey(severity) !== 'unknown'
 }
 
 function severityColor(severity: string) {
-  const key = severityKey(severity)
-  const rank = SEVERITY_RANK[key] ?? SEVERITY_RANK.unknown
+  const rank = severityRank(severity)
   if (rank >= 5) return 'var(--color-congestion-severe)'
   if (rank >= 4) return 'var(--color-congestion-heavy)'
   if (rank >= 3) return 'var(--color-congestion-moderate)'
   return 'var(--color-text-muted)'
 }
 
-function worstSeverity(incidents: Incident[]) {
+function severityBadgeStyle(severity: string) {
+  const rank = severityRank(severity)
+
+  if (rank >= 5) {
+    return {
+      color: 'var(--color-kapwa-red-700)',
+      backgroundColor: 'color-mix(in srgb, var(--color-kapwa-red-600) 14%, transparent)',
+    }
+  }
+
+  if (rank >= 4) {
+    return {
+      color: 'var(--color-kapwa-orange-700)',
+      backgroundColor: 'color-mix(in srgb, var(--color-kapwa-orange-500) 18%, transparent)',
+    }
+  }
+
+  if (rank >= 3) {
+    return {
+      color: 'var(--color-kapwa-yellow-700)',
+      backgroundColor: 'color-mix(in srgb, var(--color-kapwa-yellow-400) 24%, transparent)',
+    }
+  }
+
+  return {
+    color: 'var(--color-text-muted)',
+    backgroundColor: 'color-mix(in srgb, var(--color-text-muted) 10%, transparent)',
+  }
+}
+
+function worstSeverityColor(incidents: Incident[]) {
   return incidents.reduce((worst, inc) => {
-    const rank = SEVERITY_RANK[severityKey(inc.severity)] ?? SEVERITY_RANK.unknown
+    const rank = severityRank(inc.severity)
     return rank > worst.rank ? { rank, color: severityColor(inc.severity) } : worst
-  }, { rank: 0, color: 'var(--color-congestion-moderate)' })
+  }, { rank: 0, color: 'var(--color-congestion-moderate)' }).color
+}
+
+function incidentTiming(inc: Incident) {
+  if (inc.time_validity === 'future') return { label: 'Upcoming', color: 'var(--color-text-muted)' }
+  if (inc.has_expired_end_time) return { label: 'May have ended', color: 'var(--color-congestion-heavy)' }
+
+  const duration = durationSinceText(inc.started_at)
+  if (duration) return { label: `Ongoing ${duration}`, color: severityColor(inc.severity) }
+
+  return { label: 'Start time unavailable', color: 'var(--color-text-muted)' }
 }
 
 export default function IncidentSummary({ incidents, onIncidentClick }: Props) {
   if (incidents.length === 0) return null
 
-  const worst = worstSeverity(incidents)
+  const worstColor = worstSeverityColor(incidents)
 
   return (
     <section
       className="card mb-5 p-4 overflow-hidden"
       aria-label="Reported traffic issues"
       style={{
-        borderTop: `2px solid ${worst.color}`,
-        backgroundColor: `color-mix(in srgb, ${worst.color} 4%, var(--color-surface-raised))`,
+        borderTop: `2px solid ${worstColor}`,
+        backgroundColor: `color-mix(in srgb, ${worstColor} 4%, var(--color-surface-raised))`,
       }}
     >
       <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
@@ -67,45 +111,71 @@ export default function IncidentSummary({ incidents, onIncidentClick }: Props) {
         Reported Issues
       </h2>
       <ul className={incidents.length > 1 ? 'space-y-2' : undefined}>
-        {incidents.map((inc, i) => (
-          <li
-            key={`${inc.type}-${inc.roadName}-${i}`}
-            className={`flex items-start gap-2 text-sm${onIncidentClick && inc.lat != null ? ' cursor-pointer hover:opacity-80' : ''}`}
-            style={{ color: 'var(--color-text-secondary)' }}
-            role={onIncidentClick && inc.lat != null ? 'button' : undefined}
-            tabIndex={onIncidentClick && inc.lat != null ? 0 : undefined}
-            onClick={onIncidentClick && inc.lat != null ? () => onIncidentClick(inc) : undefined}
-            onKeyDown={onIncidentClick && inc.lat != null ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onIncidentClick(inc) } } : undefined}
-          >
-            {hasKnownSeverity(inc.severity) ? (
-              <span
-                className="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none"
-                style={{
-                  color: severityColor(inc.severity),
-                  backgroundColor: `color-mix(in srgb, ${severityColor(inc.severity)} 12%, transparent)`,
-                }}
-              >
-                {normalizeText(inc.severity)}
-              </span>
-            ) : (
-              <span className="mt-1.5 h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: 'var(--color-text-muted)' }} aria-hidden="true" />
-            )}
-            <div className="min-w-0">
-              <p className="font-medium">
-                {normalizeText(inc.type)}
+        {incidents.map((inc, i) => {
+          const timing = incidentTiming(inc)
+          const severityStyle = severityBadgeStyle(inc.severity)
+          const lastReportedAgo = ageText(inc.last_reported_at)
+          const isClickable = Boolean(onIncidentClick && inc.lat != null)
+          const interactiveProps = isClickable ? {
+            role: 'button',
+            tabIndex: 0,
+            onClick: () => onIncidentClick!(inc),
+            onKeyDown: (e: React.KeyboardEvent<HTMLLIElement>) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault()
+                onIncidentClick!(inc)
+              }
+            },
+          } : {}
+
+          return (
+            <li
+              key={inc.id ?? `${inc.type}-${inc.roadName}-${i}`}
+              className={`grid grid-cols-[4.75rem_1fr] gap-x-2 gap-y-1 rounded-md text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2${isClickable ? ' cursor-pointer hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.07]' : ''}`}
+              style={{ color: 'var(--color-text-secondary)', outlineColor: 'var(--color-focus)' }}
+              {...interactiveProps}
+            >
+              <div className="col-start-1 row-span-2 min-w-0">
+                {hasKnownSeverity(inc.severity) ? (
+                  <span
+                    className="inline-flex max-w-full rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none"
+                    style={severityStyle}
+                  >
+                    {toDisplay(inc.severity)}
+                  </span>
+                ) : (
+                  <span className="mt-1.5 block h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--color-text-muted)' }} aria-hidden="true" />
+                )}
+              </div>
+              <p className="col-start-2 row-start-1 min-w-0 font-medium">
+                {toDisplay(inc.type)}
                 {inc.from && (
-                  <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}> near {inc.from}{inc.to ? ` → ${inc.to}` : ''}</span>
+                  <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}> near {inc.from}{inc.to ? ` to ${inc.to}` : ''}</span>
                 )}
                 {inc.roadName && (
                   <span className="font-normal" style={{ color: 'var(--color-text-muted)' }}> · {inc.roadName}</span>
                 )}
               </p>
-              {inc.description && (
-                <p className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>{inc.description}</p>
-              )}
-            </div>
-          </li>
-        ))}
+              <div className="col-start-2 row-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                {inc.description && normalizeKey(inc.description) !== normalizeKey(inc.type) && (
+                  <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{toDisplay(inc.description)}</span>
+                )}
+                <span
+                  className="shrink-0 rounded-full px-1.5 py-0.5 font-semibold leading-none"
+                  style={{
+                    color: timing.color,
+                    backgroundColor: `color-mix(in srgb, ${timing.color} 12%, transparent)`,
+                  }}
+                >
+                  {timing.label}
+                </span>
+                {lastReportedAgo && (
+                  <span className="shrink-0" style={{ color: 'var(--color-text-muted)' }}>Last report {lastReportedAgo}</span>
+                )}
+              </div>
+            </li>
+          )
+        })}
       </ul>
     </section>
   )

@@ -7,6 +7,7 @@ import IncidentSummary from './components/IncidentSummary'
 import ThemeToggle from './components/ThemeToggle'
 import { fetchLatest, fetchHistory, fetchSamples } from './lib/api'
 import { CORRIDORS } from './lib/types'
+import { ageText } from './lib/time'
 import type { LatestResponse, HistoryBucket, Incident, TrafficSamplePoint, CorridorDirection } from './lib/types'
 
 type TrendRange = '3h' | '12h' | '24h'
@@ -40,17 +41,6 @@ function corridorLabel(directionKey: string): string {
     if (directionKey === `${c.id}_r`) return `to ${c.reverseLabel.replace('To ', '').toLowerCase()}`
   }
   return ''
-}
-
-// ─── Compact trust strip ────────────────────────────────────────
-
-function ageText(iso: string | null): string {
-  if (!iso) return ''
-  const ms = Date.now() - new Date(iso).getTime()
-  const mins = Math.floor(ms / 60000)
-  if (mins < 1) return 'just now'
-  if (mins < 60) return `${mins}m ago`
-  return `${Math.floor(mins / 60)}h ${mins % 60}m ago`
 }
 
 // ─── App ────────────────────────────────────────────────────────
@@ -225,7 +215,10 @@ export default function App() {
             </div>
 
             {/* 3. Reported issues */}
-            <IncidentSummary incidents={incidents} onIncidentClick={(inc) => inc.lat != null && setFlyTo({ lat: inc.lat!, lng: inc.lng! })} />
+            <IncidentSummary
+              incidents={incidents}
+              onIncidentClick={(inc) => inc.lat != null && setFlyTo({ lat: inc.lat!, lng: inc.lng! })}
+            />
 
             {/* 4. Route map */}
             <div className="mb-4">

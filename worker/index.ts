@@ -19,13 +19,24 @@ interface RouteResult {
   route_polyline: string | null
 }
 
+type IncidentProbability = 'certain' | 'probable' | 'risk_of' | 'improbable'
+type IncidentTimeValidity = 'present' | 'future'
+
 interface Incident {
+  id?: string
   type: string
   severity: string       // mapped from magnitudeOfDelay
   description: string    // from first event description
   roadName: string       // from first roadNumber or empty
   from: string
   to: string
+  started_at?: string
+  ends_at?: string
+  last_reported_at?: string
+  time_validity?: IncidentTimeValidity
+  probability?: IncidentProbability
+  report_count?: number
+  has_expired_end_time?: boolean
   lat?: number
   lng?: number
 }
@@ -161,8 +172,8 @@ async function fetchRoute(env: Env, origin: { lat: number; lng: number }, dest: 
 
 async function fetchIncidents(env: Env): Promise<Incident[]> {
   // v5 API: fields nested under properties{}, descriptions in events[], categoryFilter uses PascalCase
-  const fields = encodeURIComponent('{incidents{type,geometry{type,coordinates},properties{iconCategory,magnitudeOfDelay,events{description,iconCategory},from,to,roadNumbers,delay,length}}}')
-  const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${env.TOMTOM_API_KEY}&bbox=${INCIDENTS_BBOX}&fields=${fields}&language=en-US&t=1111&timeValidityFilter=present`
+  const fields = encodeURIComponent('{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,iconCategory},startTime,endTime,from,to,roadNumbers,delay,length,timeValidity,probabilityOfOccurrence,numberOfReports,lastReportTime}}}')
+  const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${env.TOMTOM_API_KEY}&bbox=${INCIDENTS_BBOX}&fields=${fields}&language=en-US&timeValidityFilter=present`
 
   const res = await fetch(url)
   if (!res.ok) {
@@ -188,6 +199,14 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
 
   const data = await res.json() as any
   const incidents = data?.incidents ?? []
+  const cleanString = (v: unknown) => (typeof v === 'string' && v !== 'null' && v !== '') ? v : undefined
+  const cleanNumber = (v: unknown) => (typeof v === 'number' && Number.isFinite(v)) ? v : undefined
+  const cleanTimeValidity = (v: unknown): IncidentTimeValidity | undefined => (
+    v === 'present' || v === 'future' ? v : undefined
+  )
+  const cleanProbability = (v: unknown): IncidentProbability | undefined => (
+    v === 'certain' || v === 'probable' || v === 'risk_of' || v === 'improbable' ? v : undefined
+  )
 
   return incidents.map((inc: any) => {
     const props = inc.properties ?? {}
@@ -203,13 +222,26 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
       lat = coord[1]
     }
 
+    const startedAt = cleanString(props.startTime)
+    const endsAt = cleanString(props.endTime)
+    const lastReportedAt = cleanString(props.lastReportTime)
+    const endMs = typeof endsAt === 'string' ? new Date(endsAt).getTime() : NaN
+
     return {
+      id: cleanString(props.id),
       type: ICON_CATEGORY_LABEL[props.iconCategory] ?? 'Unknown',
       severity: MAGNITUDE_LABEL[props.magnitudeOfDelay] ?? 'unknown',
       description: events[0]?.description ?? '',
       roadName: roadNums[0] ?? '',
       from: props.from ?? '',
       to: props.to ?? '',
+      started_at: startedAt,
+      ends_at: endsAt,
+      last_reported_at: lastReportedAt,
+      time_validity: cleanTimeValidity(props.timeValidity),
+      probability: cleanProbability(props.probabilityOfOccurrence),
+      report_count: cleanNumber(props.numberOfReports),
+      has_expired_end_time: Number.isFinite(endMs) && endMs < Date.now(),
       ...(lat != null && lng != null ? { lat, lng } : {}),
     }
   })

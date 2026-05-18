@@ -25,13 +25,24 @@ export const CORRIDOR_COLORS: Record<string, string> = {
 
 // ─── Direction Data (from /api/traffic/latest) ───────────────────
 
+export type IncidentProbability = 'certain' | 'probable' | 'risk_of' | 'improbable'
+export type IncidentTimeValidity = 'present' | 'future'
+
 export interface Incident {
+  id?: string
   type: string
   severity: string
   description: string
   roadName: string
   from: string
   to: string
+  started_at?: string
+  ends_at?: string
+  last_reported_at?: string
+  time_validity?: IncidentTimeValidity
+  probability?: IncidentProbability
+  report_count?: number
+  has_expired_end_time?: boolean
   lat?: number
   lng?: number
 }

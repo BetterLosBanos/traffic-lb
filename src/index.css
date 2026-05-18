@@ -18,7 +18,7 @@
   /* Text */
   --color-text-primary: var(--color-kapwa-text-strong);
   --color-text-secondary: var(--color-kapwa-text-support);
-  --color-text-muted: var(--color-kapwa-gray-500);
+  --color-text-muted: var(--color-kapwa-gray-600);
 
   /* Borders & focus */
   --color-border: var(--color-kapwa-border-weak);
@@ -53,7 +53,7 @@
     --color-surface-subtle: var(--color-kapwa-gray-900);
     --color-text-primary: var(--color-kapwa-neutral-50);
     --color-text-secondary: var(--color-kapwa-gray-400);
-    --color-text-muted: var(--color-kapwa-gray-600);
+    --color-text-muted: var(--color-kapwa-gray-400);
     --color-border: var(--color-kapwa-gray-700);
     --color-focus: var(--color-kapwa-blue-400);
     --color-congestion-light: var(--color-kapwa-green-400);
@@ -69,8 +69,8 @@
 
 /* Subtle dot pattern */
 .textured {
-  background-image: radial-gradient(circle, var(--color-border) 0.8px, transparent 0.8px);
-  background-size: 24px 24px;
+  background-image: radial-gradient(circle, color-mix(in srgb, var(--color-border) 46%, transparent) 0.55px, transparent 0.6px);
+  background-size: 30px 30px;
 }
 
 /* Display heading — Plus Jakarta Sans for the "?" */
