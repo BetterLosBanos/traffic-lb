@@ -18,20 +18,20 @@ function heroSummary(corridors: Record<string, CorridorDirection>): string {
   const all = Object.values(corridors) as CorridorDirection[]
   if (all.length === 0) return 'No live traffic data yet'
 
-  const stale = all.filter(d => d.is_stale)
+  const stale = all.filter(d => d.isStale)
   if (stale.length === all.length) return 'Traffic data may be outdated'
 
-  const active = all.filter(d => !d.is_stale)
-  const worst = active.sort((a, b) => b.delay_seconds - a.delay_seconds)[0]
+  const active = all.filter(d => !d.isStale)
+  const worst = active.sort((a, b) => b.delaySeconds - a.delaySeconds)[0]
 
   if (!worst) return 'Traffic data may be outdated'
 
-  const delayMin = Math.round(worst.delay_seconds / 60)
+  const delayMin = Math.round(worst.delaySeconds / 60)
   const dirLabel = corridorLabel(worst.direction)
 
-  if (delayMin <= 0 || worst.congestion_level === 'light') return 'Roads moving well'
-  if (worst.congestion_level === 'moderate') return `+${delayMin} min delay ${dirLabel}`
-  if (worst.congestion_level === 'heavy') return `Heavy delay ${dirLabel}`
+  if (delayMin <= 0 || worst.congestionLevel === 'light') return 'Roads moving well'
+  if (worst.congestionLevel === 'moderate') return `+${delayMin} min delay ${dirLabel}`
+  if (worst.congestionLevel === 'heavy') return `Heavy delay ${dirLabel}`
   return `Severe delay ${dirLabel}`
 }
 
@@ -93,7 +93,7 @@ export default function App() {
   const isNoData = data?.status === 'no_data'
   const corridors = data?.corridors ?? {}
   const hasData = data?.status === 'ok' && Object.keys(corridors).length > 0
-  const isStale = hasData && Object.values(corridors).some((d: CorridorDirection) => d.is_stale)
+  const isStale = hasData && Object.values(corridors).some((d: CorridorDirection) => d.isStale)
   const summary = hasData ? heroSummary(corridors) : ''
 
   // Deduplicate incidents across all corridor directions
@@ -201,7 +201,7 @@ export default function App() {
                 {isStale ? 'Stale data' : 'Fresh'}
               </span>
               <span aria-hidden="true">·</span>
-              <span>Updated {ageText(data!.last_updated)}</span>
+              <span>Updated {ageText(data!.lastUpdated)}</span>
               <span aria-hidden="true">·</span>
               <button
                 onClick={() => load()}

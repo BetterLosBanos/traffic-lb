@@ -21,8 +21,8 @@ function buildRouteSources(corridors?: Record<string, CorridorDirection>): Recor
   for (const { id } of CORRIDORS) {
     const fwd = corridors[`${id}_f`]
     const rev = corridors[`${id}_r`]
-    const fwdCoords = fwd?.route_polyline ? decodePolyline(fwd.route_polyline) : null
-    const revCoords = rev?.route_polyline ? decodePolyline(rev.route_polyline) : null
+    const fwdCoords = fwd?.routePolyline ? decodePolyline(fwd.routePolyline) : null
+    const revCoords = rev?.routePolyline ? decodePolyline(rev.routePolyline) : null
     // Merge both directions into one source for the corridor
     const features: GeoJSON.Feature<GeoJSON.LineString, { dir: string }>[] = []
     if (fwdCoords) features.push({ type: 'Feature', properties: { dir: 'f' }, geometry: { type: 'LineString', coordinates: fwdCoords } })
@@ -38,7 +38,7 @@ function buildRouteLayers(corridors: Record<string, CorridorDirection> | undefin
   if (!corridors) return []
   const layers: NonNullable<StyleSpecification['layers']> = []
   for (const { id } of CORRIDORS) {
-    if (!corridors[`${id}_f`]?.route_polyline && !corridors[`${id}_r`]?.route_polyline) continue
+    if (!corridors[`${id}_f`]?.routePolyline && !corridors[`${id}_r`]?.routePolyline) continue
     layers.push({
       id: `route-line-${id}`,
       type: 'line' as const,

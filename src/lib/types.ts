@@ -47,31 +47,31 @@ export interface Incident {
   roadName: string
   from: string
   to: string
-  started_at?: string
-  ends_at?: string
-  last_reported_at?: string
-  time_validity?: IncidentTimeValidity
+  startedAt?: string
+  endsAt?: string
+  lastReportedAt?: string
+  timeValidity?: IncidentTimeValidity
   probability?: IncidentProbability
-  report_count?: number
-  has_expired_end_time?: boolean
+  reportCount?: number
+  hasExpiredEndTime?: boolean
   lat?: number
   lng?: number
 }
 
 export interface CorridorDirection {
   direction: string
-  duration_seconds: number
-  no_traffic_seconds: number
-  historic_seconds: number | null
-  delay_seconds: number
-  congestion_ratio: number
-  congestion_level: CongestionLevel
-  distance_meters: number
-  route_polyline: string | null
+  durationSeconds: number
+  noTrafficSeconds: number
+  historicSeconds: number | null
+  delaySeconds: number
+  congestionRatio: number
+  congestionLevel: CongestionLevel
+  distanceMeters: number
+  routePolyline: string | null
   incidents: Incident[]
-  api_status: ApiStatus
-  collected_at: string
-  is_stale: boolean
+  apiStatus: ApiStatus
+  collectedAt: string
+  isStale: boolean
 }
 
 // ─── API Responses ───────────────────────────────────────────────
@@ -79,15 +79,15 @@ export interface CorridorDirection {
 export interface LatestResponse {
   status: 'ok' | 'no_data'
   corridors: Record<string, CorridorDirection>
-  last_updated: string | null
+  lastUpdated: string | null
 }
 
 export interface DirectionHistoryData {
-  avg_duration: number
-  avg_no_traffic: number
-  avg_ratio: number
-  avg_delay: number
-  sample_count: number
+  avgDuration: number
+  avgNoTraffic: number
+  avgRatio: number
+  avgDelay: number
+  sampleCount: number
 }
 
 export interface HistoryBucket {
@@ -96,10 +96,10 @@ export interface HistoryBucket {
 }
 
 export interface DirectionSampleData {
-  duration_seconds: number
-  no_traffic_seconds: number
-  congestion_ratio: number
-  delay_seconds: number
+  durationSeconds: number
+  noTrafficSeconds: number
+  congestionRatio: number
+  delaySeconds: number
 }
 
 export interface TrafficSamplePoint {
@@ -109,11 +109,11 @@ export interface TrafficSamplePoint {
 
 export interface HealthResponse {
   status: 'ok'
-  total_samples: number
-  last_collection: string | null
-  last_successful_collection: string | null
-  error_count: number
-  last_error_message: string | null
+  totalSamples: number
+  lastCollection: string | null
+  lastSuccessfulCollection: string | null
+  errorCount: number
+  lastErrorMessage: string | null
 }
 
 // ─── TomTom API Response Types ───────────────────────────────────

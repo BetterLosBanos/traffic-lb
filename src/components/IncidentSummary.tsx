@@ -83,10 +83,10 @@ function worstSeverityColor(incidents: Incident[]) {
 }
 
 function incidentTiming(inc: Incident) {
-  if (inc.time_validity === 'future') return { label: 'Upcoming', color: 'var(--color-text-muted)' }
-  if (inc.has_expired_end_time) return { label: 'May have ended', color: 'var(--color-congestion-heavy)' }
+  if (inc.timeValidity === 'future') return { label: 'Upcoming', color: 'var(--color-text-muted)' }
+  if (inc.hasExpiredEndTime) return { label: 'May have ended', color: 'var(--color-congestion-heavy)' }
 
-  const duration = durationSinceText(inc.started_at)
+  const duration = durationSinceText(inc.startedAt)
   if (duration) return { label: `Ongoing ${duration}`, color: severityColor(inc.severity) }
 
   return { label: 'Start time unavailable', color: 'var(--color-text-muted)' }
@@ -114,7 +114,7 @@ export default function IncidentSummary({ incidents, onIncidentClick }: Props) {
         {incidents.map((inc, i) => {
           const timing = incidentTiming(inc)
           const severityStyle = severityBadgeStyle(inc.severity)
-          const lastReportedAgo = ageText(inc.last_reported_at)
+          const lastReportedAgo = ageText(inc.lastReportedAt)
           const isClickable = Boolean(onIncidentClick && inc.lat != null)
           const interactiveProps = isClickable ? {
             role: 'button',

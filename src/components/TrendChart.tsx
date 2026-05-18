@@ -36,19 +36,19 @@ function secondsToMinutes(seconds: number) {
 }
 
 interface HistoryDirData {
-  avg_delay: number
-  avg_ratio: number
+  avgDelay: number
+  avgRatio: number
 }
 
 interface SampleDirData {
-  delay_seconds: number
-  congestion_ratio: number
+  delaySeconds: number
+  congestionRatio: number
 }
 
 function extractValue(entry: HistoryDirData | SampleDirData | undefined, metric: TrendMetric): number | null {
   if (!entry) return null
-  if (metric === 'delay') return secondsToMinutes('delay_seconds' in entry ? entry.delay_seconds : entry.avg_delay)
-  return 'congestion_ratio' in entry ? entry.congestion_ratio : entry.avg_ratio
+  if (metric === 'delay') return secondsToMinutes('delaySeconds' in entry ? entry.delaySeconds : entry.avgDelay)
+  return 'congestionRatio' in entry ? entry.congestionRatio : entry.avgRatio
 }
 
 function formatTime(value: string, range: TrendRange) {
