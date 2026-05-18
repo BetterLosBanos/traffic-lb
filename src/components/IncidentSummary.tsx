@@ -3,6 +3,7 @@ import type { Incident } from '../lib/types'
 
 interface Props {
   incidents: Incident[]
+  onIncidentClick?: (inc: Incident) => void
 }
 
 const SEVERITY_RANK: Record<string, number> = {
@@ -47,7 +48,7 @@ function worstSeverity(incidents: Incident[]) {
   }, { rank: 0, color: 'var(--color-congestion-moderate)' })
 }
 
-export default function IncidentSummary({ incidents }: Props) {
+export default function IncidentSummary({ incidents, onIncidentClick }: Props) {
   if (incidents.length === 0) return null
 
   const worst = worstSeverity(incidents)
@@ -67,7 +68,15 @@ export default function IncidentSummary({ incidents }: Props) {
       </h2>
       <ul className={incidents.length > 1 ? 'space-y-2' : undefined}>
         {incidents.map((inc, i) => (
-          <li key={`${inc.type}-${inc.roadName}-${i}`} className="flex items-start gap-2 text-sm" style={{ color: 'var(--color-text-secondary)' }}>
+          <li
+            key={`${inc.type}-${inc.roadName}-${i}`}
+            className={`flex items-start gap-2 text-sm${onIncidentClick && inc.lat != null ? ' cursor-pointer hover:opacity-80' : ''}`}
+            style={{ color: 'var(--color-text-secondary)' }}
+            role={onIncidentClick && inc.lat != null ? 'button' : undefined}
+            tabIndex={onIncidentClick && inc.lat != null ? 0 : undefined}
+            onClick={onIncidentClick && inc.lat != null ? () => onIncidentClick(inc) : undefined}
+            onKeyDown={onIncidentClick && inc.lat != null ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onIncidentClick(inc) } } : undefined}
+          >
             {hasKnownSeverity(inc.severity) ? (
               <span
                 className="mt-0.5 shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none"

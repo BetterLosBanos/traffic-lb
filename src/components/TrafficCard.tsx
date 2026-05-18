@@ -22,9 +22,10 @@ function tintOpacity(levels: CorridorDirection['congestion_level'][]): number {
 interface DirectionRowProps {
   dir: CorridorDirection
   label: string
+  onZoom?: () => void
 }
 
-function DirectionRow({ dir, label }: DirectionRowProps) {
+function DirectionRow({ dir, label, onZoom }: DirectionRowProps) {
   const minutes = Math.round(dir.duration_seconds / 60)
   const delay = Math.round(dir.delay_seconds / 60)
   const clearMinutes = Math.round(dir.no_traffic_seconds / 60)
@@ -34,8 +35,12 @@ function DirectionRow({ dir, label }: DirectionRowProps) {
 
   return (
     <div
-      className="grid grid-cols-[5rem_1fr] gap-3 py-3 border-b last:border-b-0"
+      className={`grid grid-cols-[5rem_1fr] gap-3 py-3 border-b last:border-b-0${onZoom ? ' cursor-pointer hover:opacity-80 active:opacity-60' : ''}`}
       style={{ borderColor: 'var(--color-border)', opacity: dir.is_stale ? 0.75 : 1 }}
+      role={onZoom ? 'button' : undefined}
+      tabIndex={onZoom ? 0 : undefined}
+      onClick={onZoom}
+      onKeyDown={onZoom ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onZoom() } } : undefined}
     >
       {/* Hero: absolute delay */}
       <div className="self-center min-w-0">
@@ -75,9 +80,10 @@ interface Props {
   reverse: CorridorDirection | undefined
   forwardLabel: string
   reverseLabel: string
+  onDirectionZoom?: (dirKey: string) => void
 }
 
-export default function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel }: Props) {
+export default function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, onDirectionZoom }: Props) {
   const corridorColor = CORRIDOR_COLORS[corridorId] ?? 'var(--color-congestion-light)'
 
   const levels: CorridorDirection['congestion_level'][] = [forward, reverse].filter(Boolean).map(d => d!.congestion_level)
@@ -110,8 +116,8 @@ export default function TrafficCard({ corridorId, label, forward, reverse, forwa
 
       {/* Direction rows */}
       <div className="px-4">
-        {forward && <DirectionRow dir={forward} label={forwardLabel} />}
-        {reverse && <DirectionRow dir={reverse} label={reverseLabel} />}
+        {forward && <DirectionRow dir={forward} label={forwardLabel} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_f`) : undefined} />}
+        {reverse && <DirectionRow dir={reverse} label={reverseLabel} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_r`) : undefined} />}
       </div>
     </div>
   )

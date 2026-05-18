@@ -63,6 +63,7 @@ export default function App() {
   const [loading, setLoading] = useState(true)
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null)
 
   const load = useCallback(async (initial = false) => {
     if (initial) setLoading(true)
@@ -180,7 +181,7 @@ export default function App() {
           <>
             {/* 1. Traffic cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
-              {CORRIDORS.map(({ id, label, forwardLabel, reverseLabel }) => {
+              {CORRIDORS.map(({ id, label, forwardLabel, reverseLabel, a, b }) => {
                 const fwd = corridors[`${id}_f`]
                 const rev = corridors[`${id}_r`]
                 if (!fwd && !rev) return null
@@ -194,6 +195,10 @@ export default function App() {
                     reverse={rev}
                     forwardLabel={forwardLabel}
                     reverseLabel={reverseLabel}
+                    onDirectionZoom={(dirKey) => {
+                      const isForward = dirKey.endsWith('_f')
+                      setFlyTo(isForward ? b : a)
+                    }}
                   />
                 )
               })}
@@ -220,11 +225,11 @@ export default function App() {
             </div>
 
             {/* 3. Reported issues */}
-            <IncidentSummary incidents={incidents} />
+            <IncidentSummary incidents={incidents} onIncidentClick={(inc) => inc.lat != null && setFlyTo({ lat: inc.lat!, lng: inc.lng! })} />
 
             {/* 4. Route map */}
             <div className="mb-4">
-              <RouteMap corridors={corridors} />
+              <RouteMap corridors={corridors} flyTo={flyTo} />
             </div>
 
             {/* 5. Traffic trend */}

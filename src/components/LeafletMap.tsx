@@ -77,9 +77,10 @@ PADDED_BOUNDS.setNorthEast([
 
 interface LeafletMapProps {
   corridors?: Record<string, CorridorDirection>
+  flyTo?: { lat: number; lng: number } | null
 }
 
-export default function LeafletMap({ corridors }: LeafletMapProps = {}) {
+export default function LeafletMap({ corridors, flyTo: flyTarget }: LeafletMapProps = {}) {
   const mapContainer = useRef<HTMLDivElement>(null)
   const mapRef = useRef<MapLibreMap | null>(null)
   const [dark, setDark] = useState(false)
@@ -127,14 +128,44 @@ export default function LeafletMap({ corridors }: LeafletMapProps = {}) {
     const tomtomKey = import.meta.env.VITE_TOMTOM_API_KEY
 
     ;(async () => {
+      // Keep only geometry layers from official incident style (drop symbol/number labels)
       let incidentLayers: any[] = []
       if (tomtomKey) {
         const variant = dark ? 'incidents_dark' : 'incidents_day'
         const resp = await fetch(`https://api.tomtom.com/traffic/map/4/style/22.*/${variant}.json?key=${tomtomKey}`)
         if (resp.ok) {
           const official = await resp.json()
-          incidentLayers = official.layers.map((l: any) => ({ ...l, source: 'tomtom-incidents' }))
+          incidentLayers = official.layers
+            .filter((l: any) => l.type !== 'symbol')
+            .map((l: any) => ({ ...l, source: 'tomtom-incidents' }))
         }
+      }
+
+      // Build incident POI markers from API data
+      const allIncidents: any[] = []
+      const seenIncidentKeys = new Set<string>()
+      if (corridors) {
+        for (const dir of Object.values(corridors) as CorridorDirection[]) {
+          for (const inc of dir.incidents) {
+            if (inc.lat == null || inc.lng == null) continue
+            const key = `${inc.lat},${inc.lng}|${inc.type}|${inc.description}`
+            if (seenIncidentKeys.has(key)) continue
+            seenIncidentKeys.add(key)
+            allIncidents.push({
+              type: 'Feature',
+              properties: { type: inc.type, severity: inc.severity, description: inc.description, roadName: inc.roadName },
+              geometry: { type: 'Point', coordinates: [inc.lng, inc.lat] },
+            })
+          }
+        }
+      }
+
+      const SEVERITY_COLOR: Record<string, string> = {
+        minor: '#eab308',
+        moderate: '#f97316',
+        major: '#ef4444',
+        severe: '#dc2626',
+        unknown: '#6b7280',
       }
 
       // Generate pin icon as RGBA for map style
@@ -188,6 +219,12 @@ export default function LeafletMap({ corridors }: LeafletMapProps = {}) {
             data: { type: 'FeatureCollection', features: CORRIDOR_ENDPOINTS.map(({ lat, lng, label }) => ({ type: 'Feature', properties: { label }, geometry: { type: 'Point', coordinates: [lng, lat] } })) },
           },
           ...buildRouteSources(corridors),
+          ...(allIncidents.length > 0 ? {
+            'incident-pois': {
+              type: 'geojson',
+              data: { type: 'FeatureCollection', features: allIncidents },
+            },
+          } : {}),
         },
         layers: [
           { id: 'carto-base', type: 'raster', source: 'carto-base', minzoom: 0, maxzoom: 22 },
@@ -259,6 +296,40 @@ export default function LeafletMap({ corridors }: LeafletMapProps = {}) {
             },
           },
           ...(tomtomKey ? incidentLayers : []),
+          // Custom incident POI markers from API data
+          ...(allIncidents.length > 0 ? [
+            {
+              id: 'incident-markers',
+              type: 'circle',
+              source: 'incident-pois',
+              paint: {
+                'circle-radius': ['interpolate', ['linear'], ['zoom'], 12, 5, 14, 7, 16, 9],
+                'circle-color': ['coalesce', ['to-color', ['match', ['get', 'severity'], 'minor', SEVERITY_COLOR.minor, 'moderate', SEVERITY_COLOR.moderate, 'major', SEVERITY_COLOR.major, 'severe', SEVERITY_COLOR.severe, SEVERITY_COLOR.unknown]], SEVERITY_COLOR.unknown],
+                'circle-stroke-color': dark ? '#1e293b' : '#ffffff',
+                'circle-stroke-width': 2,
+                'circle-opacity': 0.9,
+              },
+            },
+            {
+              id: 'incident-labels',
+              type: 'symbol',
+              source: 'incident-pois',
+              layout: {
+                'text-field': ['get', 'type'],
+                'text-font': ['Open Sans Regular', 'Arial Unicode MS Regular'],
+                'text-size': 10,
+                'text-anchor': 'top',
+                'text-offset': [0, 0.8],
+                'text-optional': true,
+                'text-max-width': 10,
+              },
+              paint: {
+                'text-color': dark ? '#e2e8f0' : '#1e293b',
+                'text-halo-color': dark ? 'rgba(0,0,0,0.7)' : 'rgba(255,255,255,0.9)',
+                'text-halo-width': 1.5,
+              },
+            },
+          ] : []),
         ],
       }
 
@@ -271,6 +342,12 @@ export default function LeafletMap({ corridors }: LeafletMapProps = {}) {
       })
     })()
   }, [dark, corridors])
+
+  // Fly to incident when clicked
+  useEffect(() => {
+    if (!flyTarget || !mapRef.current) return
+    mapRef.current.flyTo({ center: [flyTarget.lng, flyTarget.lat], zoom: 16 })
+  }, [flyTarget])
 
   return <div ref={mapContainer} className="w-full h-full" role="application" aria-label="Interactive traffic route map" style={{ height: '100%', width: '100%' }} />
 }

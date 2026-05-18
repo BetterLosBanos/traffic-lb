@@ -5,13 +5,15 @@ export interface CorridorDef {
   label: string
   forwardLabel: string
   reverseLabel: string
+  a: { lat: number; lng: number }
+  b: { lat: number; lng: number }
 }
 
 export const CORRIDORS: CorridorDef[] = [
-  { id: 'pansol', label: 'Bucal Bypass ↔ Municipal Hall', forwardLabel: 'To Municipal Hall', reverseLabel: 'To Bucal Bypass' },
-  { id: 'municipal', label: 'Municipal Hall ↔ Crossing', forwardLabel: 'To Crossing', reverseLabel: 'To Municipal Hall' },
-  { id: 'uplb', label: 'Crossing ↔ UPLB Gate', forwardLabel: 'To UPLB', reverseLabel: 'To Crossing' },
-  { id: 'bay', label: 'Crossing ↔ Bay Arch', forwardLabel: 'To Bay', reverseLabel: 'To Crossing' },
+  { id: 'pansol', label: 'Bucal Bypass ↔ Municipal Hall', forwardLabel: 'To Municipal Hall', reverseLabel: 'To Bucal Bypass', a: { lat: 14.1877993, lng: 121.1705503 }, b: { lat: 14.1773136, lng: 121.2216712 } },
+  { id: 'municipal', label: 'Municipal Hall ↔ Crossing', forwardLabel: 'To Crossing', reverseLabel: 'To Municipal Hall', a: { lat: 14.1773136, lng: 121.2216712 }, b: { lat: 14.1783995, lng: 121.2422448 } },
+  { id: 'uplb', label: 'Crossing ↔ UPLB Gate', forwardLabel: 'To UPLB', reverseLabel: 'To Crossing', a: { lat: 14.1783995, lng: 121.2422448 }, b: { lat: 14.1674438, lng: 121.2433791 } },
+  { id: 'bay', label: 'Crossing ↔ Bay Arch', forwardLabel: 'To Bay', reverseLabel: 'To Crossing', a: { lat: 14.1783995, lng: 121.2422448 }, b: { lat: 14.1759658, lng: 121.2656562 } },
 ]
 
 export const CORRIDOR_COLORS: Record<string, string> = {
