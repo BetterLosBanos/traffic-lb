@@ -11,6 +11,13 @@ function congestionColor(level: CorridorDirection['congestionLevel']) {
   }
 }
 
+function congestionColorForRatio(ratio: number): string {
+  if (ratio < 1.25) return 'var(--color-congestion-light)'
+  if (ratio < 1.75) return 'var(--color-congestion-moderate)'
+  if (ratio < 2.5) return 'var(--color-congestion-heavy)'
+  return 'var(--color-congestion-severe)'
+}
+
 function tintOpacity(levels: CorridorDirection['congestionLevel'][]): number {
   const rank = (l: CorridorDirection['congestionLevel']) => {
     switch (l) { case 'light': return 1; case 'moderate': return 2; case 'heavy': return 3; case 'severe': return 4 }
@@ -22,16 +29,23 @@ function tintOpacity(levels: CorridorDirection['congestionLevel'][]): number {
 interface DirectionRowProps {
   dir: CorridorDirection
   label: string
+  detailMode: boolean
+  baseline: 'historic' | 'ideal'
   onZoom?: () => void
 }
 
-function DirectionRow({ dir, label, onZoom }: DirectionRowProps) {
+function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRowProps) {
   const minutes = Math.round(dir.durationSeconds / 60)
-  const delay = Math.round(dir.delaySeconds / 60)
-  const clearMinutes = Math.round(dir.noTrafficSeconds / 60)
-  const cc = congestionColor(dir.congestionLevel)
-  const hasDelay = delay > 0
-  const ratio = dir.congestionRatio.toFixed(1)
+  const historicMin = dir.historicSeconds ? Math.round(dir.historicSeconds / 60) : null
+  const idealMin = dir.noTrafficSeconds ? Math.round(dir.noTrafficSeconds / 60) : null
+
+  const baselineMin = baseline === 'historic' ? historicMin : idealMin
+  const delayVsBaseline = baselineMin !== null ? minutes - baselineMin : 0
+  const ratioVsBaseline = baselineMin !== null && baselineMin > 0 ? minutes / baselineMin : 1
+
+  const cc = baseline === 'historic' ? congestionColor(dir.congestionLevel) : congestionColorForRatio(ratioVsBaseline)
+  const hasDelay = delayVsBaseline > 0
+  const ratioText = ratioVsBaseline.toFixed(1)
 
   return (
     <div
@@ -42,20 +56,22 @@ function DirectionRow({ dir, label, onZoom }: DirectionRowProps) {
       onClick={onZoom}
       onKeyDown={onZoom ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onZoom() } } : undefined}
     >
-      {/* Hero: absolute delay */}
+      {/* Hero: delay vs baseline */}
       <div className="self-center min-w-0">
         <div
           className="text-3xl sm:text-4xl font-black tabular-nums leading-none"
           style={{ color: hasDelay ? cc : 'var(--color-congestion-light)' }}
         >
-          {hasDelay ? `+${delay}` : 'OK'}
+          {hasDelay ? `+${delayVsBaseline}` : 'OK'}
         </div>
-        <div className="text-xs font-medium mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
-          {hasDelay ? 'min delay' : 'on time'}
-        </div>
+        {hasDelay && (
+          <div className="text-xs font-medium mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+            min delay
+          </div>
+        )}
       </div>
 
-      {/* Direction details with ratio inline */}
+      {/* Direction details - different based on mode */}
       <div className="min-w-0 self-center">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -66,7 +82,15 @@ function DirectionRow({ dir, label, onZoom }: DirectionRowProps) {
           )}
         </div>
         <div className="text-sm tabular-nums mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-          {minutes} min now · <span style={{ color: cc, opacity: 0.65 }}>{ratio}x</span> · {clearMinutes} min clear
+          {detailMode ? (
+            <>
+              {minutes} min now · {historicMin !== null ? `${historicMin} normal` : '—'} · {idealMin !== null ? `${idealMin} no traffic` : '—'} · {dir.currentSpeedKph} km/h
+            </>
+          ) : (
+            <>
+              {minutes} min now · <span style={{ color: cc, opacity: 0.65 }}>{ratioText}x</span> · {dir.currentSpeedKph} km/h
+            </>
+          )}
         </div>
       </div>
     </div>
@@ -80,10 +104,12 @@ interface TrafficCardProps {
   reverse: CorridorDirection | undefined
   forwardLabel: string
   reverseLabel: string
+  detailMode: boolean
+  baseline: 'historic' | 'ideal'
   onDirectionZoom?: (dirKey: string) => void
 }
 
-export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, onDirectionZoom }: TrafficCardProps) {
+export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, detailMode, baseline, onDirectionZoom }: TrafficCardProps) {
   const corridorColor = CORRIDOR_COLORS[corridorId] ?? 'var(--color-congestion-light)'
 
   const levels: CorridorDirection['congestionLevel'][] = [forward, reverse].filter(Boolean).map(d => d!.congestionLevel)
@@ -116,8 +142,8 @@ export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel,
 
       {/* Direction rows */}
       <div className="px-4">
-        {forward && <DirectionRow dir={forward} label={forwardLabel} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_f`) : undefined} />}
-        {reverse && <DirectionRow dir={reverse} label={reverseLabel} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_r`) : undefined} />}
+        {forward && <DirectionRow dir={forward} label={forwardLabel} detailMode={detailMode} baseline={baseline} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_f`) : undefined} />}
+        {reverse && <DirectionRow dir={reverse} label={reverseLabel} detailMode={detailMode} baseline={baseline} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_r`) : undefined} />}
       </div>
     </div>
   )

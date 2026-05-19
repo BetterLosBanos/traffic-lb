@@ -5,16 +5,17 @@ import { TrendChart } from './components/TrendChart'
 import { RouteMap } from './components/RouteMap'
 import { IncidentSummary } from './components/IncidentSummary'
 import { ThemeToggle } from './components/ThemeToggle'
-import { fetchLatest, fetchHistory, fetchSamples } from './lib/api'
+import { HeatmapChart } from './components/HeatmapChart'
+import { fetchLatest, fetchHistory, fetchSamples, fetchHeatmap } from './lib/api'
 import { CORRIDORS } from './lib/types'
 import { ageText } from './lib/time'
-import type { LatestResponse, HistoryBucket, Incident, TrafficSamplePoint, CorridorDirection } from './lib/types'
+import type { LatestResponse, HistoryBucket, Incident, TrafficSamplePoint, CorridorDirection, HeatmapBucket } from './lib/types'
 
 type TrendRange = '3h' | '12h' | '24h'
 
 // ─── Dynamic hero summary ───────────────────────────────────────
 
-function heroSummary(corridors: Record<string, CorridorDirection>): string {
+function heroSummary(corridors: Record<string, CorridorDirection>, baseline: 'historic' | 'ideal'): string {
   const all = Object.values(corridors) as CorridorDirection[]
   if (all.length === 0) return 'No live traffic data yet'
 
@@ -22,11 +23,20 @@ function heroSummary(corridors: Record<string, CorridorDirection>): string {
   if (stale.length === all.length) return 'Traffic data may be outdated'
 
   const active = all.filter(d => !d.isStale)
-  const worst = active.sort((a, b) => b.delaySeconds - a.delaySeconds)[0]
+
+  // Calculate delay based on baseline
+  const withDelay = active.map(d => ({
+    ...d,
+    delayVsBaseline: baseline === 'historic'
+      ? d.delaySeconds
+      : d.durationSeconds - d.noTrafficSeconds
+  }))
+
+  const worst = withDelay.sort((a, b) => b.delayVsBaseline - a.delayVsBaseline)[0]
 
   if (!worst) return 'Traffic data may be outdated'
 
-  const delayMin = Math.round(worst.delaySeconds / 60)
+  const delayMin = Math.round(worst.delayVsBaseline / 60)
   const dirLabel = corridorLabel(worst.direction)
 
   if (delayMin <= 0 || worst.congestionLevel === 'light') return 'Roads moving well'
@@ -54,6 +64,11 @@ export default function App() {
   const [refreshing, setRefreshing] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null)
+  const [heatmap, setHeatmap] = useState<HeatmapBucket[]>([])
+  const [detailMode, setDetailMode] = useState(false)
+  const [baseline, setBaseline] = useState<'historic' | 'ideal'>('historic')
+  const [trendExpanded, setTrendExpanded] = useState(false)
+  const [heatmapExpanded, setHeatmapExpanded] = useState(false)
 
   const load = useCallback(async (initial = false) => {
     if (initial) setLoading(true)
@@ -63,9 +78,10 @@ export default function App() {
       const trendRequest = trendRange === '3h'
         ? fetchSamples(3)
         : fetchHistory(trendRange === '12h' ? 12 : 24)
-      const [latest, hist] = await Promise.all([
+      const [latest, hist, heat] = await Promise.all([
         fetchLatest(),
         trendRequest,
+        fetchHeatmap(2),  // 2 days default, will grow over time
       ])
       setData(latest)
       if (trendRange === '3h') {
@@ -75,6 +91,7 @@ export default function App() {
         setHistory(hist as HistoryBucket[])
         setSamples([])
       }
+      setHeatmap(heat.data)
       setError(null)
     } catch (err) {
       console.error('[traffic-lb] Failed to fetch traffic data:', err)
@@ -91,11 +108,18 @@ export default function App() {
     return () => clearInterval(interval)
   }, [load])
 
+  useEffect(() => {
+    if (detailMode) {
+      setTrendExpanded(true)
+      setHeatmapExpanded(true)
+    }
+  }, [detailMode])
+
   const isNoData = data?.status === 'no_data'
   const corridors = data?.corridors ?? {}
   const hasData = data?.status === 'ok' && Object.keys(corridors).length > 0
   const isStale = hasData && Object.values(corridors).some((d: CorridorDirection) => d.isStale)
-  const summary = hasData ? heroSummary(corridors) : ''
+  const summary = hasData ? heroSummary(corridors, baseline) : ''
 
   // Deduplicate incidents across all corridor directions
   const incidents: Incident[] = []
@@ -121,7 +145,35 @@ export default function App() {
             <Car size={16} strokeWidth={2} />
             Traffic Ba Sa LB?
           </span>
-          <ThemeToggle />
+          <div className="flex items-center gap-2">
+            <button
+              onClick={() => setBaseline(baseline === 'historic' ? 'ideal' : 'historic')}
+              className="text-xs font-medium rounded-md px-3 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{
+                backgroundColor: 'var(--color-surface-overlay)',
+                color: 'var(--color-text-secondary)',
+                border: '1px solid var(--color-border)',
+                outlineColor: 'var(--color-focus)',
+              }}
+              aria-pressed={baseline === 'ideal'}
+            >
+              Compare: {baseline === 'historic' ? 'Normal ▾' : 'No traffic ▾'}
+            </button>
+            <button
+              onClick={() => setDetailMode(!detailMode)}
+              className="text-xs font-medium rounded-md px-3 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              style={{
+                backgroundColor: detailMode ? 'var(--color-surface-overlay)' : 'transparent',
+                color: 'var(--color-text-secondary)',
+                border: '1px solid var(--color-border)',
+                outlineColor: 'var(--color-focus)',
+              }}
+              aria-pressed={detailMode}
+            >
+              {detailMode ? 'Detailed ▾' : 'Simple ☰'}
+            </button>
+            <ThemeToggle />
+          </div>
         </div>
       </header>
 
@@ -186,6 +238,8 @@ export default function App() {
                     reverse={rev}
                     forwardLabel={forwardLabel}
                     reverseLabel={reverseLabel}
+                    detailMode={detailMode}
+                    baseline={baseline}
                     onDirectionZoom={(dirKey) => {
                       const isForward = dirKey.endsWith('_f')
                       setFlyTo(isForward ? b : a)
@@ -218,6 +272,7 @@ export default function App() {
             {/* 3. Reported issues */}
             <IncidentSummary
               incidents={incidents}
+              detailMode={detailMode}
               onIncidentClick={(inc) => inc.lat != null && setFlyTo({ lat: inc.lat!, lng: inc.lng! })}
             />
 
@@ -226,15 +281,29 @@ export default function App() {
               <RouteMap corridors={corridors} flyTo={flyTo} />
             </div>
 
-            {/* 5. Traffic trend */}
-            <div className="mb-6">
+            {/* 5. Traffic trend - collapsible */}
+            <div className="mb-4">
               <TrendChart
                 history={history}
                 samples={samples}
                 range={trendRange}
                 onRangeChange={setTrendRange}
+                expanded={trendExpanded}
+                onToggle={() => setTrendExpanded(!trendExpanded)}
+                baseline={baseline}
               />
             </div>
+
+            {/* 6. Weekly pattern heatmap - collapsible */}
+            {heatmap.length > 0 && (
+              <div className="mb-4">
+                <HeatmapChart
+                  data={heatmap}
+                  expanded={heatmapExpanded}
+                  onToggle={() => setHeatmapExpanded(!heatmapExpanded)}
+                />
+              </div>
+            )}
           </>
         )}
       </main>

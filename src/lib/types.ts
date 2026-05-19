@@ -11,12 +11,14 @@ export type IncidentSeverity = 'unknown' | 'minor' | 'moderate' | 'major' | 'sev
 export type ApiStatus = 'ok' | 'error' | 'seeded'
 export type IncidentProbability = 'certain' | 'probable' | 'risk_of' | 'improbable'
 export type IncidentTimeValidity = 'present' | 'future'
+export type IncidentTmcDirection = 'positive' | 'negative'
 
 // ─── Corridor Config (matches worker) ────────────────────────────
 
 export interface CorridorDef {
   id: string
   label: string
+  tabLabel: string
   forwardLabel: string
   reverseLabel: string
   a: { lat: number; lng: number }
@@ -24,10 +26,10 @@ export interface CorridorDef {
 }
 
 export const CORRIDORS: CorridorDef[] = [
-  { id: 'pansol', label: 'Bucal Bypass ↔ Municipal Hall', forwardLabel: 'To Municipal Hall', reverseLabel: 'To Bucal Bypass', a: { lat: 14.1877993, lng: 121.1705503 }, b: { lat: 14.1773136, lng: 121.2216712 } },
-  { id: 'municipal', label: 'Municipal Hall ↔ Crossing', forwardLabel: 'To Crossing', reverseLabel: 'To Municipal Hall', a: { lat: 14.1773136, lng: 121.2216712 }, b: { lat: 14.1783995, lng: 121.2422448 } },
-  { id: 'uplb', label: 'Crossing ↔ UPLB Gate', forwardLabel: 'To UPLB', reverseLabel: 'To Crossing', a: { lat: 14.1783995, lng: 121.2422448 }, b: { lat: 14.1674438, lng: 121.2433791 } },
-  { id: 'bay', label: 'Crossing ↔ Bay Arch', forwardLabel: 'To Bay', reverseLabel: 'To Crossing', a: { lat: 14.1783995, lng: 121.2422448 }, b: { lat: 14.1759658, lng: 121.2656562 } },
+  { id: 'pansol', label: 'Bucal Bypass ↔ Municipal Hall', tabLabel: 'Lalakay', forwardLabel: 'To Municipal Hall', reverseLabel: 'To Bucal Bypass', a: { lat: 14.1877993, lng: 121.1705503 }, b: { lat: 14.1773136, lng: 121.2216712 } },
+  { id: 'municipal', label: 'Municipal Hall ↔ Crossing', tabLabel: 'Anos', forwardLabel: 'To Crossing', reverseLabel: 'To Municipal Hall', a: { lat: 14.1773136, lng: 121.2216712 }, b: { lat: 14.1783995, lng: 121.2422448 } },
+  { id: 'uplb', label: 'Crossing ↔ UPLB Gate', tabLabel: 'Lopez Ave', forwardLabel: 'To UPLB', reverseLabel: 'To Crossing', a: { lat: 14.1783995, lng: 121.2422448 }, b: { lat: 14.1674438, lng: 121.2433791 } },
+  { id: 'bay', label: 'Crossing ↔ Bay Arch', tabLabel: 'Maahas', forwardLabel: 'To Bay', reverseLabel: 'To Crossing', a: { lat: 14.1783995, lng: 121.2422448 }, b: { lat: 14.1759658, lng: 121.2656562 } },
 ]
 
 export const CORRIDOR_COLORS: Record<string, string> = {
@@ -44,9 +46,12 @@ export interface Incident {
   type: IncidentType | string
   severity: IncidentSeverity | string
   description: string
+  events?: IncidentEvent[]
   roadName: string
   from: string
   to: string
+  delaySeconds?: number
+  lengthMeters?: number
   startedAt?: string
   endsAt?: string
   lastReportedAt?: string
@@ -56,6 +61,26 @@ export interface Incident {
   hasExpiredEndTime?: boolean
   lat?: number
   lng?: number
+  tmc?: IncidentTmc
+}
+
+export interface IncidentEvent {
+  description: string
+  code?: number
+  iconCategory?: number
+}
+
+export interface IncidentTmc {
+  countryCode: string
+  tableNumber: string
+  tableVersion: string
+  direction: IncidentTmcDirection
+  points: IncidentTmcPoint[]
+}
+
+export interface IncidentTmcPoint {
+  location: number
+  offset?: number
 }
 
 export interface CorridorDirection {
@@ -67,6 +92,8 @@ export interface CorridorDirection {
   congestionRatio: number
   congestionLevel: CongestionLevel
   distanceMeters: number
+  currentSpeedKph: number
+  freeFlowSpeedKph: number
   routePolyline: string | null
   incidents: Incident[]
   apiStatus: ApiStatus
@@ -87,6 +114,8 @@ export interface DirectionHistoryData {
   avgNoTraffic: number
   avgRatio: number
   avgDelay: number
+  avgCurrentSpeedKph: number
+  avgFreeFlowSpeedKph: number
   sampleCount: number
 }
 
@@ -100,6 +129,8 @@ export interface DirectionSampleData {
   noTrafficSeconds: number
   congestionRatio: number
   delaySeconds: number
+  currentSpeedKph: number
+  freeFlowSpeedKph: number
 }
 
 export interface TrafficSamplePoint {
@@ -114,6 +145,23 @@ export interface HealthResponse {
   lastSuccessfulCollection: string | null
   errorCount: number
   lastErrorMessage: string | null
+}
+
+// ─── Heatmap (P50/P90 per hour-of-week) ──────────────────────────
+
+export interface HeatmapBucket {
+  direction: string       // 'pansol_f', 'pansol_r', etc.
+  dow: number             // 0=Sun, 1=Mon, ..., 6=Sat (Manila local)
+  hr: number              // 0–23 (Manila local)
+  sampleCount: number
+  avgDelay: number
+  p50Delay: number | null
+  p90Delay: number | null
+  incidentCount: number
+}
+
+export interface HeatmapResponse {
+  data: HeatmapBucket[]
 }
 
 // ─── TomTom API Response Types ───────────────────────────────────
@@ -154,7 +202,7 @@ export interface TomTomIncidentProperties {
   id?: string
   iconCategory?: number
   magnitudeOfDelay?: number
-  events?: { description?: string; iconCategory?: number }[]
+  events?: { description?: string; code?: number; iconCategory?: number }[]
   startTime?: string
   endTime?: string
   from?: string
@@ -166,4 +214,11 @@ export interface TomTomIncidentProperties {
   probabilityOfOccurrence?: string
   numberOfReports?: number
   lastReportTime?: string
+  tmc?: {
+    countryCode?: string
+    tableNumber?: string
+    tableVersion?: string
+    direction?: string
+    points?: { location?: number; offset?: number }[]
+  } | null
 }

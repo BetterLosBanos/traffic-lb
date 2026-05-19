@@ -11,6 +11,9 @@ interface TrendChartProps {
   samples: TrafficSamplePoint[]
   range: TrendRange
   onRangeChange: (range: TrendRange) => void
+  expanded: boolean
+  onToggle: () => void
+  baseline: 'historic' | 'ideal'
 }
 
 interface ChartSeries {
@@ -41,12 +44,31 @@ interface HistoryDirData {
 }
 
 interface SampleDirData {
-  delaySeconds: number
+  durationSeconds: number
+  noTrafficSeconds: number
   congestionRatio: number
+  delaySeconds: number
 }
 
-function extractValue(entry: HistoryDirData | SampleDirData | undefined, metric: TrendMetric): number | null {
+function extractValue(entry: HistoryDirData | SampleDirData | undefined, metric: TrendMetric, baseline: 'historic' | 'ideal'): number | null {
   if (!entry) return null
+
+  if (baseline === 'ideal') {
+    // Freeflow-based calculations
+    if ('durationSeconds' in entry) {
+      // SampleDirData
+      const sample = entry as SampleDirData
+      if (metric === 'delay') return secondsToMinutes(sample.durationSeconds - sample.noTrafficSeconds)
+      return sample.durationSeconds / sample.noTrafficSeconds
+    } else {
+      // HistoryDirData
+      const hist = entry as HistoryDirData
+      if (metric === 'delay') return secondsToMinutes(hist.avgDuration - hist.avgNoTraffic)
+      return hist.avgDuration / hist.avgNoTraffic
+    }
+  }
+
+  // Historic-based (default)
   if (metric === 'delay') return secondsToMinutes('delaySeconds' in entry ? entry.delaySeconds : entry.avgDelay)
   return 'congestionRatio' in entry ? entry.congestionRatio : entry.avgRatio
 }
@@ -79,7 +101,11 @@ function niceCeil(value: number) {
 }
 
 function formatValue(value: number, metric: TrendMetric) {
-  return metric === 'delay' ? `+${Math.round(value)} min` : `${value.toFixed(2)}x`
+  if (metric === 'delay') {
+    const rounded = Math.round(value)
+    return rounded > 0 ? `+${rounded} min` : rounded < 0 ? `${rounded} min` : '0 min'
+  }
+  return `${value.toFixed(2)}x`
 }
 
 // Get dir keys from data — validate by suffix to avoid matching future non-direction object fields
@@ -111,7 +137,7 @@ function getSeriesLabel(dirKey: string): string {
   return corridor ? (isForward ? corridor.forwardLabel : corridor.reverseLabel) : dirKey
 }
 
-export function TrendChart({ history, samples, range, onRangeChange }: TrendChartProps) {
+export function TrendChart({ history, samples, range, onRangeChange, expanded, onToggle, baseline }: TrendChartProps) {
   const [metric, setMetric] = useState<TrendMetric>('multiplier')
 
   const sourceData = range === '3h' ? samples : history
@@ -124,9 +150,9 @@ export function TrendChart({ history, samples, range, onRangeChange }: TrendChar
       key,
       label: getSeriesLabel(key),
       color: CORRIDOR_COLORS[getCorridorId(key)] ?? '#6b7280',
-      values: sourceData.map(entry => extractValue(entry[key] as HistoryDirData | SampleDirData | undefined, metric)),
+      values: sourceData.map(entry => extractValue(entry[key] as HistoryDirData | SampleDirData | undefined, metric, baseline)),
     })),
-    [dirKeys, sourceData, metric]
+    [dirKeys, sourceData, metric, baseline]
   )
 
   const hasData = series.some(s => s.values.some(v => v !== null))
@@ -138,15 +164,16 @@ export function TrendChart({ history, samples, range, onRangeChange }: TrendChar
   const chartH = height - pad.top - pad.bottom
 
   const allValues = series.flatMap(s => s.values).filter((v): v is number => v !== null)
+  const minValue = metric === 'multiplier' ? (baseline === 'historic' ? 0.5 : 1) : (baseline === 'historic' ? -10 : 0)
   const maxValue = niceCeil(Math.max(metric === 'delay' ? 5 : 1.5, ...allValues))
   const tickCount = 5
-  const tickStep = maxValue / (tickCount - 1)
-  const ticks = Array.from({ length: tickCount }, (_, i) => Math.round(tickStep * i * 100) / 100)
+  const tickStep = (maxValue - minValue) / (tickCount - 1)
+  const ticks = Array.from({ length: tickCount }, (_, i) => Math.round((minValue + tickStep * i) * 100) / 100)
   const areaBaseline = metric === 'multiplier' ? 1 : 0
 
   const data = sourceData
   const x = (i: number) => pad.left + (i / Math.max(data.length - 1, 1)) * chartW
-  const y = (v: number) => pad.top + chartH - (v / maxValue) * chartH
+  const y = (v: number) => pad.top + chartH - ((v - minValue) / (maxValue - minValue)) * chartH
 
   const buildLine = (values: (number | null)[]) => {
     let open = false
@@ -200,64 +227,77 @@ export function TrendChart({ history, samples, range, onRangeChange }: TrendChar
   const mutedColor = 'var(--color-text-muted)'
 
   return (
-    <div className="card p-4 sm:p-5 h-full min-h-[360px] flex flex-col">
-      <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-3">
-        <div>
-          <h2 className="text-xs font-semibold uppercase tracking-wider flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
-            <TrendingUp size={13} aria-hidden="true" />
+    <div className="card p-0 overflow-hidden">
+      <button
+        onClick={onToggle}
+        className="w-full flex items-center justify-between px-4 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 border-b"
+        style={{ outlineColor: 'var(--color-focus)', borderColor: 'var(--color-border)' }}
+        aria-expanded={expanded}
+      >
+        <div className="flex items-center gap-1.5">
+          <TrendingUp size={13} aria-hidden="true" style={{ color: 'var(--color-text-muted)' }} />
+          <h2 className="text-xs font-semibold uppercase tracking-wider" style={{ color: 'var(--color-text-muted)' }}>
             Traffic Trend
           </h2>
-          <p className="text-xs mt-1" style={{ color: 'var(--color-text-muted)' }}>
-            Is it getting better or worse?
-          </p>
         </div>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_auto]">
-          <div className="grid grid-cols-2 rounded-lg p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
-            {(Object.keys(METRIC_LABELS) as TrendMetric[]).map(option => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => setMetric(option)}
-                className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{
-                  color: metric === option ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                  backgroundColor: metric === option ? 'var(--color-surface-raised)' : 'transparent',
-                  outlineColor: 'var(--color-focus)',
-                }}
-                aria-pressed={metric === option}
-              >
-                {METRIC_LABELS[option]}
-              </button>
-            ))}
-          </div>
-          <div className="grid grid-cols-3 rounded-lg p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
-            {(Object.keys(RANGE_LABELS) as TrendRange[]).map(option => (
-              <button
-                key={option}
-                type="button"
-                onClick={() => onRangeChange(option)}
-                className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{
-                  color: range === option ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                  backgroundColor: range === option ? 'var(--color-surface-raised)' : 'transparent',
-                  outlineColor: 'var(--color-focus)',
-                }}
-                aria-pressed={range === option}
-              >
-                {RANGE_LABELS[option]}
-              </button>
-            ))}
-          </div>
-        </div>
-      </div>
+        <span aria-hidden="true" style={{ color: 'var(--color-text-muted)' }}>
+          {expanded ? '▼' : '▾'}
+        </span>
+      </button>
 
-      {!hasData ? (
-        <div className="flex-1 min-h-[240px] flex items-center justify-center">
-          <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No trend data yet</p>
-        </div>
-      ) : (
-        <div className="flex-1 min-h-[240px]">
-          <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`${range} traffic ${metric === 'delay' ? 'delay' : 'multiplier'} trend`}>
+      {expanded && (
+        <div className="p-4 sm:p-5 pt-4 flex flex-col h-full min-h-[360px]">
+          <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between mb-3">
+            <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
+              Is it getting better or worse?
+            </p>
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_auto]">
+              <div className="grid grid-cols-2 rounded-lg p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
+                {(Object.keys(METRIC_LABELS) as TrendMetric[]).map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => setMetric(option)}
+                    className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{
+                      color: metric === option ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                      backgroundColor: metric === option ? 'var(--color-surface-raised)' : 'transparent',
+                      outlineColor: 'var(--color-focus)',
+                    }}
+                    aria-pressed={metric === option}
+                  >
+                    {METRIC_LABELS[option]}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-3 rounded-lg p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
+                {(Object.keys(RANGE_LABELS) as TrendRange[]).map(option => (
+                  <button
+                    key={option}
+                    type="button"
+                    onClick={() => onRangeChange(option)}
+                    className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    style={{
+                      color: range === option ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                      backgroundColor: range === option ? 'var(--color-surface-raised)' : 'transparent',
+                      outlineColor: 'var(--color-focus)',
+                    }}
+                    aria-pressed={range === option}
+                  >
+                    {RANGE_LABELS[option]}
+                  </button>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {!hasData ? (
+            <div className="flex-1 min-h-[240px] flex items-center justify-center">
+              <p className="text-sm" style={{ color: 'var(--color-text-muted)' }}>No trend data yet</p>
+            </div>
+          ) : (
+            <div className="flex-1 min-h-[240px]">
+              <svg viewBox={`0 0 ${width} ${height}`} className="w-full h-full" preserveAspectRatio="xMidYMid meet" role="img" aria-label={`${range} traffic ${metric === 'delay' ? 'delay' : 'multiplier'} trend`}>
             {ticks.map(tick => {
               const isBaseline = metric === 'multiplier' && Math.abs(tick - 1) < 0.01
               return (
@@ -322,6 +362,8 @@ export function TrendChart({ history, samples, range, onRangeChange }: TrendChar
           )
         })}
       </div>
+    </div>
+      )}
     </div>
   )
 }

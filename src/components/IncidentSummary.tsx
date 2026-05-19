@@ -4,6 +4,7 @@ import { ageText, durationSinceText } from '../lib/time'
 
 interface IncidentSummaryProps {
   incidents: Incident[]
+  detailMode: boolean
   onIncidentClick?: (inc: Incident) => void
 }
 
@@ -92,7 +93,7 @@ function incidentTiming(inc: Incident) {
   return { label: 'Start time unavailable', color: 'var(--color-text-muted)' }
 }
 
-export function IncidentSummary({ incidents, onIncidentClick }: IncidentSummaryProps) {
+export function IncidentSummary({ incidents, detailMode, onIncidentClick }: IncidentSummaryProps) {
   if (incidents.length === 0) return null
 
   const worstColor = worstSeverityColor(incidents)
@@ -159,6 +160,18 @@ export function IncidentSummary({ incidents, onIncidentClick }: IncidentSummaryP
               <div className="col-start-2 row-start-2 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
                 {inc.description && normalizeKey(inc.description) !== normalizeKey(inc.type) && (
                   <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{toDisplay(inc.description)}</span>
+                )}
+                {detailMode && inc.delaySeconds && inc.delaySeconds > 0 && (
+                  <span className="shrink-0 font-medium" style={{ color: 'var(--color-congestion-heavy)' }}>
+                    +{Math.round(inc.delaySeconds / 60)} min delay
+                  </span>
+                )}
+                {detailMode && inc.lengthMeters && inc.lengthMeters >= 100 && (
+                  <span className="shrink-0" style={{ color: 'var(--color-text-muted)' }}>
+                    {inc.lengthMeters < 1000
+                      ? `${Math.round(inc.lengthMeters)} m affected`
+                      : `${(inc.lengthMeters / 1000).toFixed(1)} km affected`}
+                  </span>
                 )}
                 <span
                   className="shrink-0 rounded-full px-1.5 py-0.5 font-semibold leading-none"

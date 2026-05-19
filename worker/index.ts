@@ -7,6 +7,7 @@ import type {
   IncidentSeverity,
   IncidentTimeValidity,
   TomTomIncident,
+  TomTomIncidentProperties,
   TomTomIncidentsResponse,
   TomTomRouteLeg,
   TomTomRouteResponse,
@@ -27,6 +28,8 @@ interface RouteResult {
   congestion_ratio: number
   distance_meters: number
   traffic_delay_seconds: number
+  current_speed_kph: number
+  free_flow_speed_kph: number
   route_polyline: string | null
 }
 
@@ -49,6 +52,8 @@ interface LatestSampleRow {
   delay_seconds: number
   congestion_ratio: number
   distance_meters: number
+  current_speed_kph: number
+  free_flow_speed_kph: number
   route_polyline: string | null
   incidents: string | null
   api_status: string
@@ -60,8 +65,10 @@ interface HistoryRow {
   hour: string
   avg_duration: number
   avg_no_traffic: number
-  avg_ratio: number
+  avg_historic: number
   avg_delay: number
+  avg_current_speed_kph: number
+  avg_free_flow_speed_kph: number
   sample_count: number
 }
 
@@ -70,8 +77,21 @@ interface SampleRow {
   time: string
   duration_seconds: number
   no_traffic_seconds: number
-  congestion_ratio: number
+  historic_seconds: number
   delay_seconds: number
+  current_speed_kph: number
+  free_flow_speed_kph: number
+}
+
+interface HeatmapRow {
+  direction: string
+  dow: number
+  hr: number
+  sample_count: number
+  avg_delay: number
+  p50_delay: number | null
+  p90_delay: number | null
+  incident_count: number
 }
 
 // ─── Corridors ───────────────────────────────────────────────────
@@ -160,6 +180,12 @@ function parseHistoryHours(value: string | undefined): number {
   return Math.min(Math.max(parsed, 1), 168)
 }
 
+function parseHeatmapDays(value: string | undefined): number {
+  const parsed = Number.parseInt(value ?? '14', 10)
+  if (!Number.isFinite(parsed)) return 14
+  return Math.min(Math.max(parsed, 1), 14)
+}
+
 
 
 // ─── TomTom API Calls ────────────────────────────────────────────
@@ -199,13 +225,15 @@ async function fetchRoute(env: Env, origin: { lat: number; lng: number }, dest: 
     congestion_ratio: Math.round((duration / noTraffic) * 100) / 100,
     distance_meters: summary.lengthInMeters,
     traffic_delay_seconds: summary.trafficDelayInSeconds ?? 0,
+    current_speed_kph: Math.round((summary.lengthInMeters * 3.6 / duration) * 10) / 10,
+    free_flow_speed_kph: Math.round((summary.lengthInMeters * 3.6 / noTraffic) * 10) / 10,
     route_polyline: encodedPolyline,
   }
 }
 
 async function fetchIncidents(env: Env): Promise<Incident[]> {
   // v5 API: fields nested under properties{}, descriptions in events[], categoryFilter uses PascalCase
-  const fields = encodeURIComponent('{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,iconCategory},startTime,endTime,from,to,roadNumbers,delay,length,timeValidity,probabilityOfOccurrence,numberOfReports,lastReportTime}}}')
+  const fields = encodeURIComponent('{incidents{type,geometry{type,coordinates},properties{id,iconCategory,magnitudeOfDelay,events{description,code,iconCategory},startTime,endTime,from,to,roadNumbers,delay,length,timeValidity,probabilityOfOccurrence,numberOfReports,lastReportTime,tmc{countryCode,tableNumber,tableVersion,direction,points{location,offset}}}}}')
   const url = `https://api.tomtom.com/traffic/services/5/incidentDetails?key=${env.TOMTOM_API_KEY}&bbox=${INCIDENTS_BBOX}&fields=${fields}&language=en-US&timeValidityFilter=present`
 
   const res = await fetch(url)
@@ -239,11 +267,43 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
   const cleanProbability = (v: unknown): IncidentProbability | undefined => (
     v === 'certain' || v === 'probable' || v === 'risk_of' || v === 'improbable' ? v : undefined
   )
+  const cleanEvents = (events: TomTomIncidentProperties['events']) => (
+    Array.isArray(events)
+      ? events
+        .map((event) => ({
+          description: cleanString(event?.description) ?? '',
+          code: cleanNumber(event?.code),
+          iconCategory: cleanNumber(event?.iconCategory),
+        }))
+        .filter((event) => event.description || event.code != null || event.iconCategory != null)
+      : []
+  )
+  const cleanTmc = (tmc: TomTomIncidentProperties['tmc']) => {
+    if (!tmc || typeof tmc !== 'object') return undefined
+    const direction: 'positive' | 'negative' | undefined = (
+      tmc.direction === 'positive' || tmc.direction === 'negative' ? tmc.direction : undefined
+    )
+    const points = Array.isArray(tmc.points)
+      ? tmc.points
+        .flatMap((point) => {
+          const location = cleanNumber(point?.location)
+          const offset = cleanNumber(point?.offset)
+          return location == null ? [] : [{ location, ...(offset != null ? { offset } : {}) }]
+        })
+      : []
+
+    const countryCode = cleanString(tmc.countryCode)
+    const tableNumber = cleanString(tmc.tableNumber)
+    const tableVersion = cleanString(tmc.tableVersion)
+    if (!countryCode || !tableNumber || !tableVersion || !direction) return undefined
+
+    return { countryCode, tableNumber, tableVersion, direction, points }
+  }
 
   return incidents.map((inc: TomTomIncident) => {
     const props = inc.properties ?? {}
     const geom = inc.geometry?.coordinates // Point: [lng,lat] or LineString: [[lng,lat],...]
-    const events = props.events ?? []
+    const events = cleanEvents(props.events)
     const roadNums = props.roadNumbers ?? []
 
     let lat: number | undefined
@@ -261,12 +321,15 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
 
     return {
       id: cleanString(props.id),
-      type: ICON_CATEGORY_LABEL[props.magnitudeOfDelay ?? 0] ?? 'Unknown',
+      type: ICON_CATEGORY_LABEL[props.iconCategory ?? 0] ?? 'Unknown',
       severity: MAGNITUDE_LABEL[props.magnitudeOfDelay ?? 0] ?? 'unknown',
       description: events[0]?.description ?? '',
+      events: events.length > 0 ? events : undefined,
       roadName: roadNums[0] ?? '',
       from: props.from ?? '',
       to: props.to ?? '',
+      delaySeconds: cleanNumber(props.delay),
+      lengthMeters: cleanNumber(props.length),
       startedAt: startedAt,
       endsAt: endsAt,
       lastReportedAt: lastReportedAt,
@@ -274,6 +337,7 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
       probability: cleanProbability(props.probabilityOfOccurrence),
       reportCount: cleanNumber(props.numberOfReports),
       hasExpiredEndTime: Number.isFinite(endMs) && endMs < Date.now(),
+      tmc: cleanTmc(props.tmc),
       ...(lat != null && lng != null ? { lat, lng } : {}),
     }
   })
@@ -335,8 +399,8 @@ async function collectTraffic(env: Env): Promise<void> {
         route?.congestion_ratio ?? 1,
         route?.distance_meters ?? 0,
         route?.traffic_delay_seconds ?? 0,
-        null,
-        null,
+        route?.current_speed_kph ?? 0,
+        route?.free_flow_speed_kph ?? 0,
         route?.route_polyline ?? null,
         JSON.stringify(incidents),
         'tomtom',
@@ -388,9 +452,12 @@ function normalizeIncident(raw: Record<string, unknown>): Incident {
     type: raw.type as string,
     severity: raw.severity as string,
     description: raw.description as string,
+    events: raw.events as Incident['events'],
     roadName: raw.roadName as string,
     from: raw.from as string,
     to: raw.to as string,
+    delaySeconds: (raw.delaySeconds ?? raw.delay_seconds) as number | undefined,
+    lengthMeters: (raw.lengthMeters ?? raw.length_meters) as number | undefined,
     startedAt: (raw.startedAt ?? raw.started_at) as string | undefined,
     endsAt: (raw.endsAt ?? raw.ends_at) as string | undefined,
     lastReportedAt: (raw.lastReportedAt ?? raw.last_reported_at) as string | undefined,
@@ -400,6 +467,7 @@ function normalizeIncident(raw: Record<string, unknown>): Incident {
     hasExpiredEndTime: (raw.hasExpiredEndTime ?? raw.has_expired_end_time) as boolean | undefined,
     lat: raw.lat as number | undefined,
     lng: raw.lng as number | undefined,
+    tmc: raw.tmc as Incident['tmc'],
   }
 }
 
@@ -427,6 +495,8 @@ app.get('/api/traffic/latest', async (c) => {
     congestionRatio: number
     congestionLevel: CongestionLevel
     distanceMeters: number
+    currentSpeedKph: number
+    freeFlowSpeedKph: number
     routePolyline: string | null
     incidents: Incident[]
     apiStatus: string
@@ -437,8 +507,8 @@ app.get('/api/traffic/latest', async (c) => {
   for (const rawRow of results) {
     const row = rawRow as unknown as LatestSampleRow
     const dirKey = row.direction
-    const ratio = row.congestion_ratio
-    const level = getCongestionLevel(ratio)
+    const historicRatio = row.historic_seconds > 0 ? row.duration_seconds / row.historic_seconds : 1
+    const level = getCongestionLevel(historicRatio)
     const rawIncidents: Record<string, unknown>[] = row.incidents ? JSON.parse(row.incidents) : []
     // Translate incident fields from DB (may be old snake_case or current camelCase)
     const parsedIncidents: Incident[] = rawIncidents.map(normalizeIncident)
@@ -451,9 +521,11 @@ app.get('/api/traffic/latest', async (c) => {
       noTrafficSeconds: row.no_traffic_seconds,
       historicSeconds: row.historic_seconds,
       delaySeconds: row.delay_seconds,
-      congestionRatio: ratio,
+      congestionRatio: Math.round(historicRatio * 100) / 100,
       congestionLevel: level,
       distanceMeters: row.distance_meters,
+      currentSpeedKph: Math.round(row.current_speed_kph * 10) / 10,
+      freeFlowSpeedKph: Math.round(row.free_flow_speed_kph * 10) / 10,
       routePolyline: row.route_polyline ?? null,
       incidents: parsedIncidents,
       apiStatus: row.api_status,
@@ -485,8 +557,10 @@ app.get('/api/traffic/history', async (c) => {
       strftime('%Y-%m-%dT%H:00:00', created_at) as hour,
       AVG(duration_seconds) as avg_duration,
       AVG(no_traffic_seconds) as avg_no_traffic,
-      AVG(congestion_ratio) as avg_ratio,
+      AVG(historic_seconds) as avg_historic,
       AVG(delay_seconds) as avg_delay,
+      AVG(current_speed_kph) as avg_current_speed_kph,
+      AVG(free_flow_speed_kph) as avg_free_flow_speed_kph,
       COUNT(*) as sample_count
     FROM traffic_samples
     WHERE created_at > datetime('now', ?)
@@ -506,8 +580,10 @@ app.get('/api/traffic/history', async (c) => {
     buckets[h][row.direction] = {
       avgDuration: Math.round(row.avg_duration),
       avgNoTraffic: Math.round(row.avg_no_traffic),
-      avgRatio: Math.round(row.avg_ratio * 100) / 100,
-      avgDelay: Math.round(row.avg_delay),
+      avgRatio: row.avg_historic > 0 ? Math.round((row.avg_duration / row.avg_historic) * 100) / 100 : 1,
+      avgDelay: Math.round(row.avg_duration - row.avg_historic),
+      avgCurrentSpeedKph: Math.round(row.avg_current_speed_kph * 10) / 10,
+      avgFreeFlowSpeedKph: Math.round(row.avg_free_flow_speed_kph * 10) / 10,
       sampleCount: row.sample_count,
     }
   }
@@ -525,8 +601,10 @@ app.get('/api/traffic/samples', async (c) => {
       strftime('%Y-%m-%dT%H:%M:00', created_at) as time,
       duration_seconds,
       no_traffic_seconds,
-      congestion_ratio,
-      delay_seconds
+      historic_seconds,
+      delay_seconds,
+      current_speed_kph,
+      free_flow_speed_kph
     FROM traffic_samples
     WHERE created_at > datetime('now', ?)
       AND api_status != 'error'
@@ -543,12 +621,66 @@ app.get('/api/traffic/samples', async (c) => {
     buckets[time][row.direction] = {
       durationSeconds: row.duration_seconds,
       noTrafficSeconds: row.no_traffic_seconds,
-      congestionRatio: row.congestion_ratio,
-      delaySeconds: row.delay_seconds,
+      congestionRatio: row.historic_seconds > 0 ? Math.round((row.duration_seconds / row.historic_seconds) * 100) / 100 : 1,
+      delaySeconds: row.historic_seconds > 0 ? Math.round(row.duration_seconds - row.historic_seconds) : 0,
+      currentSpeedKph: Math.round(row.current_speed_kph * 10) / 10,
+      freeFlowSpeedKph: Math.round(row.free_flow_speed_kph * 10) / 10,
     }
   }
 
   return c.json(Object.values(buckets))
+})
+
+// P90 heatmap: delay by hour-of-week for all corridor directions
+app.get('/api/traffic/heatmap', async (c) => {
+  const days = parseHeatmapDays(c.req.query('days'))
+
+  const { results } = await c.env.DB.prepare(`
+    WITH ranked AS (
+      SELECT
+        direction,
+        cast(strftime('%w', datetime(created_at, '+8 hours')) as integer) as dow,
+        cast(strftime('%H', datetime(created_at, '+8 hours')) as integer) as hr,
+        delay_seconds,
+        ROW_NUMBER() OVER (
+          PARTITION BY direction, cast(strftime('%w', datetime(created_at, '+8 hours')) as integer), cast(strftime('%H', datetime(created_at, '+8 hours')) as integer) ORDER BY delay_seconds
+        ) as rn,
+        COUNT(*) OVER (
+          PARTITION BY direction, cast(strftime('%w', datetime(created_at, '+8 hours')) as integer), cast(strftime('%H', datetime(created_at, '+8 hours')) as integer)
+        ) as cnt,
+        CASE WHEN COALESCE(json_array_length(incidents), 0) > 0 THEN 1 ELSE 0 END as had_incident
+      FROM traffic_samples
+      WHERE api_status != 'error'
+        AND created_at > datetime('now', ?)
+    )
+    SELECT
+      direction, dow, hr,
+      COUNT(*) as sample_count,
+      AVG(delay_seconds) as avg_delay,
+      SUM(had_incident) as incident_count,
+      MAX(CASE
+        WHEN rn = CAST((cnt * 50 + 99) / 100 AS INTEGER) THEN delay_seconds
+      END) as p50_delay,
+      MAX(CASE
+        WHEN rn = CAST((cnt * 90 + 99) / 100 AS INTEGER) THEN delay_seconds
+      END) as p90_delay
+    FROM ranked
+    GROUP BY direction, dow, hr
+    ORDER BY direction, dow, hr
+  `).bind(`-${days} days`).all()
+
+  const data = (results as unknown as HeatmapRow[]).map(row => ({
+    direction: row.direction,
+    dow: row.dow,
+    hr: row.hr,
+    sampleCount: row.sample_count,
+    avgDelay: row.avg_delay,
+    p50Delay: row.p50_delay,
+    p90Delay: row.p90_delay,
+    incidentCount: row.incident_count,
+  }))
+
+  return c.json({ data })
 })
 
 // Seed endpoint: manually insert a sample for testing
