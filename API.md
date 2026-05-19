@@ -1,8 +1,103 @@
-# API Reference — Traffic Ba Sa LB
+# API Reference - Traffic Ba Sa LB
 
 Base URL: `https://traffic-lb.<your-subdomain>.workers.dev`
 
-All responses are JSON. All timestamps are ISO 8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`).
+All API responses are JSON. Worker responses use `camelCase`. D1 storage uses
+`snake_case`. All public timestamps are ISO 8601 UTC with a `Z` suffix.
+
+---
+
+## Data Sources
+
+### TomTom Routing API
+
+Used once per corridor direction on each collection tick.
+
+Endpoint shape:
+`/routing/1/calculateRoute/{locations}/json?traffic=true&travelMode=car&computeTravelTimeFor=all&sectionType=traffic&routeRepresentation=polyline`
+
+Normalized route fields:
+
+| Field | Source | Description |
+|-------|--------|-------------|
+| `durationSeconds` | `summary.travelTimeInSeconds` | Travel time with traffic |
+| `noTrafficSeconds` | `summary.noTrafficTravelTimeInSeconds` | Free-flow travel time |
+| `historicSeconds` | `summary.historicTrafficTravelTimeInSeconds` | Historic average, when present |
+| `delaySeconds` | Derived | `durationSeconds - historicSeconds` (delay vs normal) |
+| `congestionRatio` | Derived | `durationSeconds / historicSeconds` (ratio vs normal) |
+| `congestionLevel` | Derived | `light`, `moderate`, `heavy`, or `severe` |
+| `distanceMeters` | `summary.lengthInMeters` | Route distance |
+| `trafficDelaySeconds` | `summary.trafficDelayInSeconds` | TomTom's traffic delay value, stored internally |
+| `currentSpeedKph` | Derived | Distance divided by traffic duration |
+| `freeFlowSpeedKph` | Derived | Distance divided by free-flow duration |
+| `routePolyline` | `route.legs[].points` | Semicolon-separated `lat,lng` points for map overlays |
+
+Congestion thresholds:
+
+| Ratio | Level |
+|-------|-------|
+| `< 1.25` | `light` |
+| `< 1.75` | `moderate` |
+| `< 2.5` | `heavy` |
+| `>= 2.5` | `severe` |
+
+### TomTom Incident Details API
+
+Used once per collection tick for the corridor bounding box.
+
+Endpoint shape:
+`/traffic/services/5/incidentDetails?bbox=...&fields=...&language=en-US&timeValidityFilter=present`
+
+Requested incident fields:
+`type`, `geometry.type`, `geometry.coordinates`, `id`, `iconCategory`,
+`magnitudeOfDelay`, `events.description`, `events.code`,
+`events.iconCategory`, `startTime`, `endTime`, `from`, `to`, `roadNumbers`,
+`delay`, `length`, `timeValidity`, `probabilityOfOccurrence`,
+`numberOfReports`, `lastReportTime`, and `tmc`.
+
+Normalized incident fields:
+
+| Field | Source | Description |
+|-------|--------|-------------|
+| `id` | `properties.id` | TomTom incident ID |
+| `type` | `properties.iconCategory` | Category label, e.g. `Jam`, `Accident`, `Road Works` |
+| `severity` | `properties.magnitudeOfDelay` | `unknown`, `minor`, `moderate`, `major`, `severe` |
+| `description` | `properties.events[0].description` | Event text, e.g. `Stopped traffic` |
+| `events` | `properties.events[]` | Full TomTom event list with `description`, `code`, and `iconCategory` |
+| `roadName` | `properties.roadNumbers[0]` | First road number/name |
+| `from` | `properties.from` | Start location label |
+| `to` | `properties.to` | End location label |
+| `delaySeconds` | `properties.delay` | Delay caused by this specific incident |
+| `lengthMeters` | `properties.length` | Length of the incident stretch |
+| `startedAt` | `properties.startTime` | Incident start time, if available |
+| `endsAt` | `properties.endTime` | Incident end time, if available |
+| `lastReportedAt` | `properties.lastReportTime` | Last report time, if available |
+| `timeValidity` | `properties.timeValidity` | `present` or `future` |
+| `probability` | `properties.probabilityOfOccurrence` | `certain`, `probable`, `risk_of`, or `improbable` |
+| `reportCount` | `properties.numberOfReports` | TomTom report count, if available |
+| `hasExpiredEndTime` | Derived | `true` when `endsAt` is before current time |
+| `lat`, `lng` | `geometry.coordinates` | Representative incident coordinate |
+| `tmc` | `properties.tmc` | Traffic Message Channel metadata, when TomTom provides it |
+
+Null-like TomTom values (`null`, `"null"`, and empty strings) are normalized to
+omitted optional fields before storage.
+
+The full TomTom geometry is requested so we can derive the representative
+coordinate. The public API currently exposes `lat` and `lng`, not the complete
+LineString coordinates.
+
+### TomTom Map Tiles
+
+Used directly by the frontend map, separate from D1-backed incident cards:
+
+| Tile/API | Purpose |
+|----------|---------|
+| Traffic flow vector tiles | Colored road flow overlay |
+| Incident vector tiles | TomTom incident icons on the map |
+| Incident style/sprite/glyphs | Official incident marker styling |
+
+The red numbered incident icons on the map come from TomTom's map tile style.
+They are not rendered from the D1 incident list.
 
 ---
 
@@ -10,343 +105,246 @@ All responses are JSON. All timestamps are ISO 8601 UTC (`YYYY-MM-DDTHH:MM:SSZ`)
 
 Collection health and freshness check.
 
-**Response:**
-
 ```json
 {
   "status": "ok",
-  "total_samples": 1420,
-  "last_collection": "2026-05-18T06:30:00Z",
-  "last_successful_collection": "2026-05-18T06:30:00Z",
-  "error_count": 2,
-  "last_error_message": null
+  "totalSamples": 1420,
+  "lastCollection": "2026-05-18T06:30:00Z",
+  "lastSuccessfulCollection": "2026-05-18T06:30:00Z",
+  "errorCount": 2,
+  "lastErrorMessage": null
 }
 ```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `status` | `string` | Always `"ok"` |
-| `total_samples` | `number` | Total rows in `traffic_samples` |
-| `last_collection` | `string\|null` | ISO timestamp of most recent sample (includes errors) |
-| `last_successful_collection` | `string\|null` | ISO timestamp of most recent non-error sample |
-| `error_count` | `number` | Total rows with `api_status = 'error'` |
-| `last_error_message` | `string\|null` | Most recent error message, if any |
+| `status` | `string` | Always `ok` |
+| `totalSamples` | `number` | Total rows in `traffic_samples` |
+| `lastCollection` | `string\|null` | Most recent sample timestamp, including errors |
+| `lastSuccessfulCollection` | `string\|null` | Most recent non-error sample timestamp |
+| `errorCount` | `number` | Total rows with `api_status = 'error'` |
+| `lastErrorMessage` | `string\|null` | Most recent error message |
 
 ---
 
 ## `GET /api/traffic/latest`
 
-Current traffic status for all corridors. Returns the most recent sample per direction.
-
-**Query params:** none
-
-**Response:**
+Current traffic status for all corridor directions. Returns the latest D1 row per
+direction.
 
 ```json
 {
   "status": "ok",
-  "last_updated": "2026-05-18T06:30:00Z",
+  "lastUpdated": "2026-05-18T06:30:00Z",
   "corridors": {
     "pansol_f": {
       "direction": "pansol_f",
-      "duration_seconds": 480,
-      "no_traffic_seconds": 360,
-      "historic_seconds": 400,
-      "delay_seconds": 120,
-      "congestion_ratio": 1.33,
-      "congestion_level": "moderate",
-      "distance_meters": 5200,
-      "route_polyline": "14.187799,121.170550;14.185526,121.172035;...",
+      "durationSeconds": 480,
+      "noTrafficSeconds": 360,
+      "historicSeconds": 400,
+      "delaySeconds": 120,
+      "congestionRatio": 1.33,
+      "congestionLevel": "moderate",
+      "distanceMeters": 5200,
+      "currentSpeedKph": 39.0,
+      "freeFlowSpeedKph": 52.0,
+      "routePolyline": "14.187799,121.170550;14.185526,121.172035",
       "incidents": [],
-      "api_status": "ok",
-      "collected_at": "2026-05-18T06:30:00Z",
-      "is_stale": false
-    },
-    "pansol_r": { "..." },
-    "municipal_f": { "..." },
-    "municipal_r": { "..." },
-    "uplb_f": { "..." },
-    "uplb_r": { "..." },
-    "bay_f": { "..." },
-    "bay_r": { "..." }
+      "apiStatus": "ok",
+      "collectedAt": "2026-05-18T06:30:00Z",
+      "isStale": false
+    }
   }
 }
 ```
 
-| Field | Type | Description |
-|-------|------|-------------|
-| `status` | `string` | `"ok"` or `"no_data"` |
-| `last_updated` | `string\|null` | ISO timestamp of newest sample across all directions |
-| `corridors` | `object` | Keyed by direction ID (`{corridor}_{f\|r}`) |
-
-**Direction object:**
+Top-level fields:
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `direction` | `string` | `{corridor}_{f\|r}` — see corridor table below |
-| `duration_seconds` | `number` | Current travel time with traffic |
-| `no_traffic_seconds` | `number` | Free-flow travel time (no traffic) |
-| `historic_seconds` | `number\|null` | TomTom's historic average for this time/day |
-| `delay_seconds` | `number` | `duration - no_traffic` (can be negative if roads are clear) |
-| `congestion_ratio` | `number` | `duration / no_traffic`, rounded to 2 decimals |
-| `congestion_level` | `string` | `"light"` / `"moderate"` / `"heavy"` / `"severe"` |
-| `distance_meters` | `number` | Route distance |
-| `route_polyline` | `string\|null` | Semicolon-separated `lat,lng` pairs for map overlay |
-| `incidents` | `array` | Active TomTom incidents in corridor bbox |
-| `api_status` | `string` | `"ok"` / `"error"` / `"seeded"` |
-| `collected_at` | `string` | ISO timestamp when sample was stored |
-| `is_stale` | `boolean` | `true` if sample is older than 30 minutes |
+| `status` | `string` | `ok` or `no_data` |
+| `lastUpdated` | `string\|null` | Newest sample timestamp across directions |
+| `corridors` | `object` | Direction-keyed corridor data |
 
-**Congestion level thresholds:**
+Direction object fields:
 
-| Ratio | Level |
-|-------|-------|
-| < 1.25 | light |
-| < 1.75 | moderate |
-| < 2.5 | heavy |
-| ≥ 2.5 | severe |
+| Field | Type | Description |
+|-------|------|-------------|
+| `direction` | `string` | `{corridor}_{f\|r}` |
+| `durationSeconds` | `number` | Travel time with traffic |
+| `noTrafficSeconds` | `number` | Free-flow travel time |
+| `historicSeconds` | `number\|null` | Historic average, when present |
+| `delaySeconds` | `number` | Route delay |
+| `congestionRatio` | `number` | Traffic duration divided by free-flow duration |
+| `congestionLevel` | `string` | Derived congestion level |
+| `distanceMeters` | `number` | Route distance |
+| `currentSpeedKph` | `number` | Derived current speed |
+| `freeFlowSpeedKph` | `number` | Derived free-flow speed |
+| `routePolyline` | `string\|null` | Semicolon-separated route points |
+| `incidents` | `Incident[]` | Active incident snapshot from D1 |
+| `apiStatus` | `string` | `ok`, `error`, or `seeded` |
+| `collectedAt` | `string` | Sample collection timestamp |
+| `isStale` | `boolean` | `true` if older than 30 minutes |
 
 ---
 
 ## `GET /api/traffic/history`
 
-Hourly averaged samples for trend charts. Groups by hour and direction, only includes non-error samples.
+Hourly averages for trend charts. Only non-error samples are included.
 
-**Query params:**
+Query params:
 
-| Param | Type | Default | Range | Description |
-|-------|------|---------|-------|-------------|
-| `hours` | `number` | `24` | 1–168 | Hours of history to return |
-
-**Response:** array of hourly buckets, each containing per-direction averages.
+| Param | Default | Range | Description |
+|-------|---------|-------|-------------|
+| `hours` | `24` | `1-168` | Hours of history to return |
 
 ```json
 [
   {
     "hour": "2026-05-17T22:00:00Z",
     "pansol_f": {
-      "avg_duration": 450,
-      "avg_no_traffic": 360,
-      "avg_ratio": 1.25,
-      "avg_delay": 90,
-      "sample_count": 6
-    },
-    "pansol_r": { "..." },
-    "municipal_f": { "..." }
-  },
-  {
-    "hour": "2026-05-17T23:00:00Z",
-    "..."
+      "avgDuration": 450,
+      "avgNoTraffic": 360,
+      "avgRatio": 1.25,
+      "avgDelay": 90,
+      "avgCurrentSpeedKph": 41.6,
+      "avgFreeFlowSpeedKph": 52.0,
+      "sampleCount": 6
+    }
   }
 ]
 ```
-
-**Direction average object:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `avg_duration` | `number` | Average `duration_seconds`, rounded |
-| `avg_no_traffic` | `number` | Average `no_traffic_seconds`, rounded |
-| `avg_ratio` | `number` | Average `congestion_ratio`, 2 decimals |
-| `avg_delay` | `number` | Average `delay_seconds`, rounded |
-| `sample_count` | `number` | Number of samples in this hour |
-
-Only hours with data are included. Directions without samples in an hour are omitted from that bucket.
 
 ---
 
 ## `GET /api/traffic/samples`
 
-Raw sample data for granular trend views. Returns individual samples grouped by minute bucket.
+Recent sample points grouped by minute bucket for granular charts.
 
-**Query params:**
+Query params:
 
-| Param | Type | Default | Range | Description |
-|-------|------|---------|-------|-------------|
-| `hours` | `number` | `24` | 1–168 | Hours of samples to return |
-
-**Response:** array of minute-bucketed objects.
+| Param | Default | Range | Description |
+|-------|---------|-------|-------------|
+| `hours` | `24` | `1-168` | Hours of samples to return |
 
 ```json
 [
   {
     "time": "2026-05-18T06:00:00Z",
     "pansol_f": {
-      "duration_seconds": 480,
-      "no_traffic_seconds": 360,
-      "congestion_ratio": 1.33,
-      "delay_seconds": 120
-    },
-    "pansol_r": { "..." }
+      "durationSeconds": 480,
+      "noTrafficSeconds": 360,
+      "congestionRatio": 1.33,
+      "delaySeconds": 120,
+      "currentSpeedKph": 39.0,
+      "freeFlowSpeedKph": 52.0
+    }
   }
 ]
 ```
 
-**Direction sample object:**
+---
+
+## `GET /api/traffic/heatmap`
+
+P50/P90 delay by Manila-local hour-of-week for all directions.
+
+Query params:
+
+| Param | Default | Max | Description |
+|-------|---------|-----|-------------|
+| `days` | `14` | `14` | Historical window in days |
+
+```json
+{
+  "data": [
+    {
+      "direction": "pansol_f",
+      "dow": 1,
+      "hr": 17,
+      "sampleCount": 12,
+      "avgDelay": 180,
+      "p50Delay": 120,
+      "p90Delay": 420,
+      "incidentCount": 3
+    }
+  ]
+}
+```
 
 | Field | Type | Description |
 |-------|------|-------------|
-| `duration_seconds` | `number` | Raw travel time |
-| `no_traffic_seconds` | `number` | Raw free-flow time |
-| `congestion_ratio` | `number` | Raw ratio |
-| `delay_seconds` | `number` | Raw delay |
+| `direction` | `string` | Direction key |
+| `dow` | `number` | Manila-local day of week, `0=Sun` ... `6=Sat` |
+| `hr` | `number` | Manila-local hour, `0-23` |
+| `sampleCount` | `number` | Samples in the bucket |
+| `avgDelay` | `number` | Average delay in seconds |
+| `p50Delay` | `number\|null` | Nearest-rank median delay in seconds |
+| `p90Delay` | `number\|null` | Nearest-rank P90 delay in seconds |
+| `incidentCount` | `number` | Number of samples in the bucket with at least one incident |
 
 ---
 
-## `POST /api/traffic/seed`
+## Local-only Endpoints
 
-Insert a test sample. **Localhost only** — returns 403 from any other host.
+### `POST /api/traffic/seed`
 
-**Request body:**
+Inserts a test sample. Localhost only.
 
-```json
-{
-  "direction": "pansol_f",
-  "duration_seconds": 480,
-  "no_traffic_seconds": 360,
-  "historic_seconds": 400,
-  "delay_seconds": 120,
-  "congestion_ratio": 1.33,
-  "distance_meters": 5200,
-  "incidents": []
-}
-```
+### `GET /api/debug/collect`
 
-| Field | Required | Description |
-|-------|----------|-------------|
-| `direction` | yes | Direction key |
-| `duration_seconds` | yes | Travel time with traffic |
-| `no_traffic_seconds` | yes | Free-flow travel time |
-| `historic_seconds` | no | Historic average |
-| `delay_seconds` | yes | Duration minus free-flow |
-| `congestion_ratio` | yes | Duration divided by free-flow |
-| `distance_meters` | no | Route distance |
-| `incidents` | no | Incident array |
-
-**Response (200):**
-
-```json
-{ "ok": true, "direction": "pansol_f" }
-```
-
----
-
-## `GET /api/debug/collect`
-
-Manually trigger a collection cycle. **Localhost only.**
-
-**Response (200):**
-
-```json
-{ "ok": true, "message": "Collection complete" }
-```
-
-**Response (500):**
-
-```json
-{
-  "error": true,
-  "message": "Routing API 429: rate limited",
-  "stack": "Error: Routing API 429..."
-}
-```
+Manually triggers a collection cycle. Localhost only.
 
 ---
 
 ## Corridors
 
 | ID | Forward (`_f`) | Reverse (`_r`) |
-|----|---------------|----------------|
-| `pansol` | Bucal Bypass → Municipal Hall | Municipal Hall → Bucal Bypass |
-| `municipal` | Municipal Hall → Crossing | Crossing → Municipal Hall |
-| `uplb` | Crossing → UPLB Gate | UPLB Gate → Crossing |
-| `bay` | Crossing → Bay Welcome Arch | Bay Welcome Arch → Crossing |
+|----|----------------|----------------|
+| `pansol` | Bucal Bypass to Municipal Hall | Municipal Hall to Bucal Bypass |
+| `municipal` | Municipal Hall to Crossing | Crossing to Municipal Hall |
+| `uplb` | Crossing to UPLB Gate | UPLB Gate to Crossing |
+| `bay` | Crossing to Bay Arch | Bay Arch to Crossing |
 
-Direction keys: `{id}_f` (forward, A→B) and `{id}_r` (reverse, B→A). 8 total.
-
----
-
-## Timestamp Convention
-
-- **Storage:** D1 uses `datetime('now')` → `YYYY-MM-DD HH:MM:SS` (UTC, no suffix)
-- **API boundary:** Worker normalizes all timestamps to ISO 8601 UTC with `Z` suffix via `toISO()`
-- **Frontend:** Formats to `Asia/Manila` via `Intl.DateTimeFormat`
-
-No raw D1 datetime strings reach the frontend.
+Direction keys use `{id}_f` for forward and `{id}_r` for reverse.
 
 ---
 
-## Cron Collection
+## Storage And Collection
 
-- **Schedule:** `*/10 * * * *` (every 10 minutes)
-- **Hours gate:** Only collects during 5 AM–11 PM Manila time (`shouldCollectNow()`)
-- **Per tick:** 8 TomTom Routing API calls (4 corridors × 2 directions) + 1 Incidents API call
-- **Staleness threshold:** 30 minutes — samples older than this are flagged `is_stale: true`
+### Cron
 
-### External APIs
+- Schedule: every 10 minutes.
+- Collection gate: 5 AM-11 PM Manila time.
+- Per tick: 8 Routing API calls plus 1 Incident Details API call.
+- Retention: 14 days.
+- Stale threshold: 30 minutes.
 
-| API | Purpose | Calls/tick |
-|-----|---------|-----------|
-| TomTom Routing | Travel time, distance, route polyline | 8 |
-| TomTom Incidents | Active accidents, congestion, road work in bbox | 1 |
+### D1 `traffic_samples`
 
-API key stored as Cloudflare Worker secret (`TOMTOM_API_KEY`).
+One row per direction per collection tick.
 
----
+| Column | Description |
+|--------|-------------|
+| `direction` | Direction key |
+| `duration_seconds` | Travel time with traffic |
+| `no_traffic_seconds` | Free-flow travel time |
+| `historic_seconds` | Historic travel time |
+| `delay_seconds` | Route delay |
+| `congestion_ratio` | Route multiplier |
+| `distance_meters` | Route distance |
+| `traffic_delay_seconds` | TomTom route traffic delay |
+| `current_speed_kph` | Derived current speed |
+| `free_flow_speed_kph` | Derived free-flow speed |
+| `route_polyline` | Semicolon-separated route points |
+| `incidents` | JSON string containing normalized incidents |
+| `provider` | Data provider |
+| `api_status` | Collection status |
+| `error_message` | Error detail, if any |
+| `created_at` | UTC collection timestamp |
 
-## Database Schema
+### Timestamp Convention
 
-### `traffic_samples`
-
-Primary table. One row per direction per cron tick.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | `INTEGER PK` | Auto-increment |
-| `direction` | `TEXT` | `{corridor}_{f\|r}` |
-| `duration_seconds` | `INTEGER` | Travel time with traffic |
-| `no_traffic_seconds` | `INTEGER` | Free-flow travel time |
-| `historic_seconds` | `INTEGER` | TomTom historic average |
-| `delay_seconds` | `INTEGER` | `duration - no_traffic` |
-| `congestion_ratio` | `REAL` | `duration / no_traffic` |
-| `distance_meters` | `INTEGER` | Route distance |
-| `traffic_delay_seconds` | `INTEGER` | Live incident delay |
-| `current_speed_kph` | `REAL` | Reserved (unused) |
-| `free_flow_speed_kph` | `REAL` | Reserved (unused) |
-| `route_polyline` | `TEXT` | Semicolon-separated `lat,lng` pairs |
-| `incidents` | `TEXT` | JSON array of incidents |
-| `provider` | `TEXT` | Always `"tomtom"` |
-| `api_status` | `TEXT` | `"ok"` / `"error"` / `"seeded"` |
-| `error_message` | `TEXT` | Error detail if `api_status = 'error'` |
-| `created_at` | `TEXT` | UTC timestamp (D1 `datetime('now')`) |
-
-**Indexes:** `idx_samples_direction`, `idx_samples_created`
-
-### `flow_segments`
-
-Reserved for per-segment speed data. Not currently populated by the cron job.
-
-| Column | Type | Description |
-|--------|------|-------------|
-| `id` | `INTEGER PK` | Auto-increment |
-| `sample_id` | `INTEGER FK` | References `traffic_samples.id` |
-| `direction` | `TEXT` | Direction key |
-| `point_index` | `INTEGER` | 0-based index along route |
-| `lat` | `REAL` | Segment latitude |
-| `lng` | `REAL` | Segment longitude |
-| `current_speed_kph` | `REAL` | Current speed |
-| `free_flow_speed_kph` | `REAL` | Free-flow speed |
-| `jam_factor` | `REAL` | TomTom jam factor |
-| `confidence` | `REAL` | Data confidence |
-| `coordinates` | `TEXT` | JSON geometry |
-| `created_at` | `TEXT` | UTC timestamp |
-
-**Indexes:** `idx_segments_sample`, `idx_segments_created`
-
-### Migrations
-
-| # | File | Description |
-|---|------|-------------|
-| 0001 | `traffic_samples.sql` | Creates `traffic_samples` and `flow_segments` tables + indexes |
-| 0002 | `flow_coordinates.sql` | Adds `coordinates` column to `flow_segments` |
-| 0003 | `route_polyline.sql` | Adds `route_polyline` column to `traffic_samples` |
+- D1 stores UTC as `YYYY-MM-DD HH:MM:SS`.
+- Worker normalizes public timestamps to ISO 8601 UTC.
+- Frontend displays user-facing times in `Asia/Manila`.

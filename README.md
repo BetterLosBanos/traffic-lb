@@ -87,6 +87,7 @@ Quick reference:
 | `GET /api/traffic/latest` | Latest traffic status for all corridors |
 | `GET /api/traffic/history?hours=24` | Hourly averages for trend chart |
 | `GET /api/traffic/samples?hours=3` | Raw samples for granular trend |
+| `GET /api/traffic/heatmap?days=14` | Weekly pattern heatmap (P50/P90 by hour-of-week) |
 | `GET /api/health` | Collection health and last sample time |
 | `POST /api/traffic/seed` | Insert test sample (localhost only) |
 | `GET /api/debug/collect` | Manual cron trigger (localhost only) |
