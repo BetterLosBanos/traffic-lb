@@ -164,11 +164,39 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
   const chartH = height - pad.top - pad.bottom
 
   const allValues = series.flatMap(s => s.values).filter((v): v is number => v !== null)
-  const minValue = metric === 'multiplier' ? (baseline === 'historic' ? 0.5 : 1) : (baseline === 'historic' ? -10 : 0)
-  const maxValue = niceCeil(Math.max(metric === 'delay' ? 5 : 1.5, ...allValues))
+  const dataMin = Math.min(...allValues)
+  const dataMax = Math.max(...allValues)
+
+  // Smart y-axis range: include 0 for delay, 1x for multiplier, but don't waste space
+  const minValue = metric === 'multiplier'
+    ? (baseline === 'historic' ? Math.min(0.8, dataMin) : 1)
+    : Math.min(0, dataMin) // Never go below 0 for delay
+  const maxValue = niceCeil(Math.max(metric === 'delay' ? 5 : 1.5, dataMax))
   const tickCount = 5
-  const tickStep = (maxValue - minValue) / (tickCount - 1)
-  const ticks = Array.from({ length: tickCount }, (_, i) => Math.round((minValue + tickStep * i) * 100) / 100)
+
+  // Ensure key values (0 for delay, 1x for multiplier) are always visible
+  const keyTick = metric === 'multiplier' ? 1 : 0
+  const ticks: number[] = []
+  ticks.push(minValue)
+  ticks.push(maxValue)
+  // Insert key tick if not already at boundaries
+  if (keyTick > minValue && keyTick < maxValue) {
+    ticks.push(keyTick)
+  }
+  // Fill remaining ticks evenly
+  while (ticks.length < tickCount) {
+    const range = maxValue - minValue
+    const step = range / (tickCount - 1)
+    for (let i = 1; i < tickCount - 1; i++) {
+      const tick = Math.round((minValue + step * i) * 100) / 100
+      if (!ticks.some(t => Math.abs(t - tick) < 0.01)) {
+        ticks.push(tick)
+      }
+    }
+    break
+  }
+  ticks.sort((a, b) => a - b)
+
   const areaBaseline = metric === 'multiplier' ? 1 : 0
 
   const data = sourceData

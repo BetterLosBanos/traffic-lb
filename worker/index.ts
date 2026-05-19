@@ -88,9 +88,12 @@ interface HeatmapRow {
   dow: number
   hr: number
   sample_count: number
-  avg_delay: number
-  p50_delay: number | null
-  p90_delay: number | null
+  avg_delay_usual: number
+  avg_delay_best: number
+  p50_delay_usual: number | null
+  p50_delay_best: number | null
+  p90_delay_usual: number | null
+  p90_delay_best: number | null
   incident_count: number
 }
 
@@ -137,6 +140,9 @@ const CORRIDORS: Corridor[] = [
     label: 'Crossing LB → Bay Arch',
     a: { lat: 14.1783995, lng: 121.2422448 },   // Crossing Los Baños
     b: { lat: 14.1759658, lng: 121.2656562 },   // Bay Welcome Arch
+    waypoints: [
+      { lat: 14.1777218, lng: 121.2458656 },   // Maharlika Highway
+    ],
   },
 ]
 
@@ -641,9 +647,11 @@ app.get('/api/traffic/heatmap', async (c) => {
         direction,
         cast(strftime('%w', datetime(created_at, '+8 hours')) as integer) as dow,
         cast(strftime('%H', datetime(created_at, '+8 hours')) as integer) as hr,
-        delay_seconds,
+        duration_seconds,
+        no_traffic_seconds,
+        historic_seconds,
         ROW_NUMBER() OVER (
-          PARTITION BY direction, cast(strftime('%w', datetime(created_at, '+8 hours')) as integer), cast(strftime('%H', datetime(created_at, '+8 hours')) as integer) ORDER BY delay_seconds
+          PARTITION BY direction, cast(strftime('%w', datetime(created_at, '+8 hours')) as integer), cast(strftime('%H', datetime(created_at, '+8 hours')) as integer) ORDER BY duration_seconds
         ) as rn,
         COUNT(*) OVER (
           PARTITION BY direction, cast(strftime('%w', datetime(created_at, '+8 hours')) as integer), cast(strftime('%H', datetime(created_at, '+8 hours')) as integer)
@@ -656,14 +664,21 @@ app.get('/api/traffic/heatmap', async (c) => {
     SELECT
       direction, dow, hr,
       COUNT(*) as sample_count,
-      AVG(delay_seconds) as avg_delay,
+      AVG(duration_seconds - COALESCE(historic_seconds, no_traffic_seconds)) as avg_delay_usual,
+      AVG(duration_seconds - no_traffic_seconds) as avg_delay_best,
       SUM(had_incident) as incident_count,
       MAX(CASE
-        WHEN rn = CAST((cnt * 50 + 99) / 100 AS INTEGER) THEN delay_seconds
-      END) as p50_delay,
+        WHEN rn = CAST((cnt * 50 + 99) / 100 AS INTEGER) THEN duration_seconds - COALESCE(historic_seconds, no_traffic_seconds)
+      END) as p50_delay_usual,
       MAX(CASE
-        WHEN rn = CAST((cnt * 90 + 99) / 100 AS INTEGER) THEN delay_seconds
-      END) as p90_delay
+        WHEN rn = CAST((cnt * 50 + 99) / 100 AS INTEGER) THEN duration_seconds - no_traffic_seconds
+      END) as p50_delay_best,
+      MAX(CASE
+        WHEN rn = CAST((cnt * 90 + 99) / 100 AS INTEGER) THEN duration_seconds - COALESCE(historic_seconds, no_traffic_seconds)
+      END) as p90_delay_usual,
+      MAX(CASE
+        WHEN rn = CAST((cnt * 90 + 99) / 100 AS INTEGER) THEN duration_seconds - no_traffic_seconds
+      END) as p90_delay_best
     FROM ranked
     GROUP BY direction, dow, hr
     ORDER BY direction, dow, hr
@@ -674,9 +689,12 @@ app.get('/api/traffic/heatmap', async (c) => {
     dow: row.dow,
     hr: row.hr,
     sampleCount: row.sample_count,
-    avgDelay: row.avg_delay,
-    p50Delay: row.p50_delay,
-    p90Delay: row.p90_delay,
+    avgDelayUsual: row.avg_delay_usual,
+    avgDelayBest: row.avg_delay_best,
+    p50DelayUsual: row.p50_delay_usual,
+    p50DelayBest: row.p50_delay_best,
+    p90DelayUsual: row.p90_delay_usual,
+    p90DelayBest: row.p90_delay_best,
     incidentCount: row.incident_count,
   }))
 

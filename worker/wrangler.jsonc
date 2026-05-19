@@ -18,7 +18,7 @@
 		{
 			"binding": "DB",
 			"database_name": "traffic-lb-db",
-            "database_id": "d4b16af6-4347-477c-828e-f2c35eba85b6",
+			"database_id": "d4b16af6-4347-477c-828e-f2c35eba85b6",
 			"remote": true
 		}
 	],

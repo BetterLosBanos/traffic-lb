@@ -84,7 +84,7 @@ function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRow
         <div className="text-sm tabular-nums mt-1" style={{ color: 'var(--color-text-secondary)' }}>
           {detailMode ? (
             <>
-              {minutes} min now · {historicMin !== null ? `${historicMin} normal` : '—'} · {idealMin !== null ? `${idealMin} no traffic` : '—'} · {dir.currentSpeedKph} km/h
+              {minutes} min now · {historicMin !== null ? `${historicMin} usual` : '—'} · {idealMin !== null ? `${idealMin} best time` : '—'} · {dir.currentSpeedKph} km/h
             </>
           ) : (
             <>

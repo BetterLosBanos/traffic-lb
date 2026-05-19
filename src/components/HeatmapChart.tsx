@@ -6,6 +6,7 @@ interface HeatmapChartProps {
   data: HeatmapBucket[]
   expanded: boolean
   onToggle: () => void
+  baseline: 'historic' | 'ideal'
 }
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -17,6 +18,11 @@ const HOUR_LABELS = Array.from({ length: 12 }, (_, i) => {
   if (hour === 12) return '12p'
   return hour < 12 ? `${hour}a` : `${hour - 12}p`
 })
+
+// Type-safe delay field accessor
+function getDelayField(bucket: HeatmapBucket, field: 'p50DelayUsual' | 'p50DelayBest' | 'p90DelayUsual' | 'p90DelayBest' | 'avgDelayUsual' | 'avgDelayBest'): number | null {
+  return bucket[field]
+}
 
 // Display order: Mon(0), Tue(1), ..., Sun(6)
 // SQLite Sun=0, Mon=1, ..., Sat=6
@@ -51,10 +57,14 @@ function delayToColor(p90Seconds: number | null): string {
   }
 }
 
-export function HeatmapChart({ data, expanded, onToggle }: HeatmapChartProps) {
+export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChartProps) {
   const [selectedCorridor, setSelectedCorridor] = useState(CORRIDORS[0].id)
   const [selectedDirection, setSelectedDirection] = useState<'f' | 'r'>('f')
   const [hoveredCell, setHoveredCell] = useState<{ dow: number; hr: number } | null>(null)
+
+  // Select appropriate delay fields based on baseline
+  const p50Field: 'p50DelayUsual' | 'p50DelayBest' = baseline === 'historic' ? 'p50DelayUsual' : 'p50DelayBest'
+  const p90Field: 'p90DelayUsual' | 'p90DelayBest' = baseline === 'historic' ? 'p90DelayUsual' : 'p90DelayBest'
 
   const dirKey = `${selectedCorridor}_${selectedDirection}`
 
@@ -192,7 +202,7 @@ export function HeatmapChart({ data, expanded, onToggle }: HeatmapChartProps) {
             <div className="flex items-center gap-2 text-xs" style={{ color: 'var(--color-text-secondary)' }}>
               <span>Right now:</span>
               <span style={{ color: 'var(--color-text-primary)' }}>
-                Typical: +{Math.round((currentBucket.p50Delay ?? 0) / 60)} min | Plan for: +{Math.round((currentBucket.p90Delay ?? 0) / 60)} min
+                Typical: +{Math.round((getDelayField(currentBucket, p50Field) ?? 0) / 60)} min | Plan for: +{Math.round((getDelayField(currentBucket, p90Field) ?? 0) / 60)} min
               </span>
               <span aria-hidden="true">·</span>
               <span>based on {currentBucket.sampleCount} samples</span>
@@ -237,7 +247,7 @@ export function HeatmapChart({ data, expanded, onToggle }: HeatmapChartProps) {
                   {Array.from({ length: 24 }, (_, hr) => {
                     const cell = gridData.find(c => c.dow === displayDow && c.hr === hr)
                     const bucket = cell?.bucket
-                    const delaySec = bucket?.p90Delay ?? null
+                    const delaySec = bucket ? getDelayField(bucket, p90Field) : null
                     const isEmpty = delaySec === null || delaySec === 0
                     const incidentCount = bucket?.incidentCount ?? 0
 
@@ -317,8 +327,8 @@ export function HeatmapChart({ data, expanded, onToggle }: HeatmapChartProps) {
             const bucket = selectedBuckets.get(key)
             if (!bucket) return `${DOW_LABELS[displayDow]} ${hr}:00 · No data`
 
-            const p50Min = bucket.p50Delay !== null ? Math.round(bucket.p50Delay / 60) : 'N/A'
-            const p90Min = bucket.p90Delay !== null ? Math.round(bucket.p90Delay / 60) : 'N/A'
+            const p50Min = getDelayField(bucket, p50Field) !== null ? Math.round(getDelayField(bucket, p50Field)! / 60) : 'N/A'
+            const p90Min = getDelayField(bucket, p90Field) !== null ? Math.round(getDelayField(bucket, p90Field)! / 60) : 'N/A'
             const incidentText = bucket.incidentCount > 0
               ? ` · ${bucket.incidentCount} incident${bucket.incidentCount > 1 ? 's' : ''}`
               : ''

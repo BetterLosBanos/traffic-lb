@@ -21,3 +21,5 @@ continue/
 .hermes/
 .agents/
 .codex/
+context/
+CLAUDE.md

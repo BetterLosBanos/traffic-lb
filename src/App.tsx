@@ -157,7 +157,7 @@ export default function App() {
               }}
               aria-pressed={baseline === 'ideal'}
             >
-              Compare: {baseline === 'historic' ? 'Normal ▾' : 'No traffic ▾'}
+              Compare: {baseline === 'historic' ? 'Usual ▾' : 'Best time ▾'}
             </button>
             <button
               onClick={() => setDetailMode(!detailMode)}
@@ -301,6 +301,7 @@ export default function App() {
                   data={heatmap}
                   expanded={heatmapExpanded}
                   onToggle={() => setHeatmapExpanded(!heatmapExpanded)}
+                  baseline={baseline}
                 />
               </div>
             )}

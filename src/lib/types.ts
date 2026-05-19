@@ -154,9 +154,12 @@ export interface HeatmapBucket {
   dow: number             // 0=Sun, 1=Mon, ..., 6=Sat (Manila local)
   hr: number              // 0–23 (Manila local)
   sampleCount: number
-  avgDelay: number
-  p50Delay: number | null
-  p90Delay: number | null
+  avgDelayUsual: number
+  avgDelayBest: number
+  p50DelayUsual: number | null
+  p50DelayBest: number | null
+  p90DelayUsual: number | null
+  p90DelayBest: number | null
   incidentCount: number
 }
 
