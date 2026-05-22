@@ -37,10 +37,11 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => applyTheme(!dark)}
-      className="relative flex h-8 w-10 items-center rounded-md border px-0.5 transition-colors duration-300 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2"
+      className="h-8 w-8 rounded-md border flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
       style={{
-        backgroundColor: 'var(--color-surface-overlay)',
+        backgroundColor: dark ? 'var(--color-surface-raised)' : 'var(--color-surface-overlay)',
         borderColor: 'var(--color-border)',
+        color: dark ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
         '--tw-ring-color': 'var(--color-focus)',
         '--tw-ring-offset-color': 'var(--color-surface)',
       } as React.CSSProperties}
@@ -48,19 +49,10 @@ export function ThemeToggle() {
       aria-pressed={dark}
       title={dark ? 'Light mode' : 'Dark mode'}
     >
-      <span
-        className="flex h-5 w-5 items-center justify-center rounded-[4px] transition-transform duration-300"
-        style={{
-          transform: dark ? 'translateX(16px)' : 'translateX(0)',
-          backgroundColor: 'var(--color-surface-raised)',
-          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-        }}
-      >
-        {dark
-          ? <Moon size={11} color="var(--color-toggle-icon-moon)" strokeWidth={2.5} />
-          : <Sun size={11} color="var(--color-toggle-icon-sun)" strokeWidth={2.5} />
-        }
-      </span>
+      {dark
+        ? <Moon size={14} strokeWidth={2} aria-hidden="true" />
+        : <Sun size={14} strokeWidth={2} aria-hidden="true" />
+      }
     </button>
   )
 }
