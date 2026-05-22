@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import { Car, RefreshCw, TrendingUp } from 'lucide-react'
 import { TrafficCard } from './components/TrafficCard'
 import { TrendChart } from './components/TrendChart'
@@ -11,7 +11,6 @@ import { useTrafficData, type TrendRange } from './lib/api'
 import { CORRIDORS } from './lib/types'
 import { ageText } from './lib/time'
 import type { CorridorDirection } from './lib/types'
-import type { TrafficBaseline } from './lib/types'
 
 // ─── Dynamic hero summary ───────────────────────────────────────
 
@@ -63,19 +62,20 @@ export default function App() {
   const [trendRange, setTrendRange] = useState<TrendRange>('3h')
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null)
   const [detailMode, setDetailMode] = useState(false)
-  const [baseline] = useState<TrafficBaseline>('freeFlow')
   const [trendExpanded, setTrendExpanded] = useState(false)
   const [heatmapExpanded, setHeatmapExpanded] = useState(false)
+  const hasLoaded = useRef(false)
 
   const handleLoad = useCallback((initial = false) => {
     load(trendRange, initial)
   }, [load, trendRange])
 
   useEffect(() => {
-    handleLoad(data === null)
+    handleLoad(!hasLoaded.current)
+    hasLoaded.current = true
     const interval = setInterval(handleLoad, 10 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [handleLoad, data])
+  }, [handleLoad])
 
   useEffect(() => {
     if (detailMode) {
@@ -199,7 +199,7 @@ export default function App() {
               <button
                 onClick={() => handleLoad()}
                 disabled={refreshing}
-                className="flex items-center gap-1.5 min-h-7 px-2 rounded-md font-medium transition-colors disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                className="flex items-center gap-1.5 min-h-7 px-2 rounded-md font-medium transition-colors disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:bg-black/4:hover:bg-white/[0.06]"
                 style={{
                   color: 'var(--color-text-secondary)',
                   '--tw-ring-color': 'var(--color-focus)',
@@ -232,7 +232,6 @@ export default function App() {
                 onRangeChange={setTrendRange}
                 expanded={trendExpanded}
                 onToggle={() => setTrendExpanded(!trendExpanded)}
-                baseline={baseline}
               />
             </div>
 
@@ -243,7 +242,6 @@ export default function App() {
                   data={heatmap}
                   expanded={heatmapExpanded}
                   onToggle={() => setHeatmapExpanded(!heatmapExpanded)}
-                  baseline={baseline}
                 />
               </div>
             )}

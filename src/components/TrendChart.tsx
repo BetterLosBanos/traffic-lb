@@ -13,7 +13,6 @@ interface TrendChartProps {
   onRangeChange: (range: TrendRange) => void
   expanded: boolean
   onToggle: () => void
-  baseline: TrafficBaseline
 }
 
 interface ChartSeries {
@@ -138,8 +137,9 @@ function getSeriesLabel(dirKey: string): string {
   return corridor ? (isForward ? corridor.forwardLabel : corridor.reverseLabel) : dirKey
 }
 
-export function TrendChart({ history, samples, range, onRangeChange, expanded, onToggle, baseline }: TrendChartProps) {
+export function TrendChart({ history, samples, range, onRangeChange, expanded, onToggle }: TrendChartProps) {
   const [metric, setMetric] = useState<TrendMetric>('multiplier')
+  const [baseline, setBaseline] = useState<TrafficBaseline>('freeFlow')
 
   const sourceData = range === '3h' ? samples : history
   const timeKey = range === '3h' ? 'time' : 'hour'
@@ -259,7 +259,7 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
     <div className="card p-0 overflow-hidden">
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 border-b"
+        className="w-full flex items-center justify-between px-4 py-3 text-left focus-visible:outline-2 focus-visible:outline-offset-2 border-b"
         style={{ outlineColor: 'var(--color-focus)', borderColor: 'var(--color-border)' }}
         aria-expanded={expanded}
       >
@@ -280,7 +280,7 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
             <p className="text-xs" style={{ color: 'var(--color-text-muted)' }}>
               Is it getting better or worse?
             </p>
-            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_auto]">
+            <div className="grid grid-cols-1 gap-2 sm:grid-cols-[auto_auto_auto]">
               <div className="grid grid-cols-2 rounded-lg p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
                 {(Object.keys(METRIC_LABELS) as TrendMetric[]).map(option => (
                   <button
@@ -297,6 +297,25 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
                     aria-pressed={metric === option}
                   >
                     {METRIC_LABELS[option]}
+                  </button>
+                ))}
+              </div>
+              <div className="grid grid-cols-2 rounded-lg p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
+                {(['usual', 'freeFlow'] as const).map(b => (
+                  <button
+                    key={b}
+                    type="button"
+                    onClick={() => setBaseline(b)}
+                    className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
+                    style={{
+                      color: baseline === b ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                      backgroundColor: baseline === b ? 'var(--color-surface-raised)' : 'transparent',
+                      '--tw-ring-color': 'var(--color-focus)',
+                      '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                    } as React.CSSProperties}
+                    aria-pressed={baseline === b}
+                  >
+                    {b === 'usual' ? 'Usual' : 'Best'}
                   </button>
                 ))}
               </div>

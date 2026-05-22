@@ -6,7 +6,6 @@ interface HeatmapChartProps {
   data: HeatmapBucket[]
   expanded: boolean
   onToggle: () => void
-  baseline: TrafficBaseline
 }
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -53,11 +52,12 @@ function delayToColor(p90Seconds: number | null): string {
   }
 }
 
-export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChartProps) {
+export function HeatmapChart({ data, expanded, onToggle }: HeatmapChartProps) {
   const [selectedCorridor, setSelectedCorridor] = useState(CORRIDORS[0].id)
   const [selectedDirection, setSelectedDirection] = useState<'f' | 'r'>('f')
   const [hoveredCell, setHoveredCell] = useState<{ dow: number; hr: number } | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const [baseline, setBaseline] = useState<TrafficBaseline>('freeFlow')
 
   // Select appropriate delay fields based on baseline
   const p50Field: 'p50UsualDelaySeconds' | 'p50FreeFlowDelaySeconds' = baseline === 'usual' ? 'p50UsualDelaySeconds' : 'p50FreeFlowDelaySeconds'
@@ -121,7 +121,7 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
       {/* Collapsible header */}
       <button
         onClick={onToggle}
-        className="w-full flex items-center justify-between px-4 py-3 text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 border-b"
+        className="w-full flex items-center justify-between px-4 py-3 text-left focus-visible:outline focus-visible:outline-offset-2 border-b"
         style={{ outlineColor: 'var(--color-focus)', borderColor: 'var(--color-border)' }}
         aria-expanded={expanded}
       >
@@ -185,6 +185,26 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
             </button>
           ))}
         </div>
+
+        {/* Baseline toggle */}
+        <div className="flex rounded-md p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
+          {(['usual', 'freeFlow'] as const).map(b => (
+            <button
+              key={b}
+              onClick={() => setBaseline(b)}
+              className="min-h-7 px-3 text-xs font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
+              style={{
+                color: baseline === b ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                backgroundColor: baseline === b ? 'var(--color-surface-raised)' : 'transparent',
+                '--tw-ring-color': 'var(--color-focus)',
+                '--tw-ring-offset-color': 'var(--color-surface-raised)',
+              } as React.CSSProperties}
+              aria-pressed={baseline === b}
+            >
+              {b === 'usual' ? 'Usual' : 'Best'}
+            </button>
+          ))}
+        </div>
       </div>
 
       {/* Empty state */}
@@ -211,7 +231,7 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
           {/* Heatmap grid */}
           <div className="overflow-x-auto -mx-4 sm:mx-0 px-4 sm:px-0">
             <div
-              className="grid gap-0.5 min-w-[max-content]"
+              className="grid gap-0.5 min-w-max"
               style={{
                 gridTemplateColumns: '3rem repeat(24, minmax(14px, 1fr))',
                 gridTemplateRows: 'auto repeat(7, minmax(28px, 1fr))',
