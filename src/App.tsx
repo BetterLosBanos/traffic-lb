@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useRef } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { Car, RefreshCw, TrendingUp } from 'lucide-react'
 import { TrafficCard } from './components/TrafficCard'
 import { TrendChart } from './components/TrendChart'
@@ -70,18 +70,15 @@ export default function App() {
   const [detailMode, setDetailMode] = useState(false)
   const [trendExpanded, setTrendExpanded] = useState(true)
   const [heatmapExpanded, setHeatmapExpanded] = useState(true)
-  const hasLoaded = useRef(false)
+  const didInitial = useRef(false)
 
-  const handleLoad = useCallback((initial = false) => {
-    load(trendRange, initial)
-  }, [load, trendRange])
-
+  // Initial load + 10min interval; re-fetch when trendRange changes
   useEffect(() => {
-    handleLoad(!hasLoaded.current)
-    hasLoaded.current = true
-    const interval = setInterval(handleLoad, 10 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [handleLoad])
+    load(trendRange, !didInitial.current)
+    didInitial.current = true
+    const id = setInterval(() => load(trendRange), 10 * 60 * 1000)
+    return () => clearInterval(id)
+  }, [trendRange, load])
 
   const isNoData = data?.status === 'no_data'
   const hasData = data?.status === 'ok' && Object.keys(corridors).length > 0
@@ -96,51 +93,44 @@ export default function App() {
             <Car size={18} strokeWidth={2.5} style={{ color: 'var(--color-congestion-light)' }} />
             <span>Traffic Ba Sa LB?</span>
           </span>
-          <div className="flex items-center gap-2">
-            <div
-              className="relative flex rounded-md p-0.5"
-              style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}
-            >
-              <div
-                className="absolute top-0.5 bottom-0.5 rounded-sm transition-all duration-200 ease-out"
+          <div
+            className="flex items-center rounded-lg p-0.5 gap-0.5"
+            style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}
+          >
+            {(['live', 'analytics'] as const).map(p => (
+              <button
+                key={p}
+                onClick={() => setPage(p)}
+                className="min-h-7 px-3 text-xs font-medium rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all duration-200"
                 style={{
-                  left: page === 'live' ? '2px' : '50%',
-                  right: page === 'live' ? '50%' : '2px',
-                  backgroundColor: 'var(--color-surface-raised)',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
-                }}
-              />
-              {(['live', 'analytics'] as const).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className="relative z-10 min-h-7 px-3 text-xs font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-200"
-                  style={{
-                    color: page === p ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                    '--tw-ring-color': 'var(--color-focus)',
-                    '--tw-ring-offset-color': 'var(--color-surface-raised)',
-                  } as React.CSSProperties}
-                  aria-pressed={page === p}
-                >
-                  {p === 'live' ? 'Live' : 'Analytics'}
-                </button>
-              ))}
-            </div>
+                  color: page === p ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                  backgroundColor: page === p ? 'var(--color-surface-raised)' : 'transparent',
+                  boxShadow: page === p ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
+                  '--tw-ring-color': 'var(--color-focus)',
+                  '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                } as React.CSSProperties}
+                aria-pressed={page === p}
+              >
+                {p === 'live' ? 'Live' : 'Analytics'}
+              </button>
+            ))}
+            <div className="w-px self-stretch mx-0.5" style={{ backgroundColor: 'var(--color-border)' }} />
             <button
               onClick={() => setDetailMode(!detailMode)}
-              className="text-xs font-medium rounded-md px-3 py-2 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
+              className="min-h-7 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all duration-200"
               style={{
-                backgroundColor: detailMode ? 'var(--color-surface-overlay)' : 'transparent',
-                color: 'var(--color-text-secondary)',
-                border: '1px solid var(--color-border)',
+                color: detailMode ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                backgroundColor: detailMode ? 'var(--color-surface-raised)' : 'transparent',
+                boxShadow: detailMode ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                 '--tw-ring-color': 'var(--color-focus)',
-                '--tw-ring-offset-color': 'var(--color-surface)',
+                '--tw-ring-offset-color': 'var(--color-surface-raised)',
               } as React.CSSProperties}
               aria-pressed={detailMode}
             >
               <TrendingUp size={12} aria-hidden="true" />
               {detailMode ? 'Detailed' : 'Simple'}
             </button>
+            <div className="w-px self-stretch mx-0.5" style={{ backgroundColor: 'var(--color-border)' }} />
             <ThemeToggle />
           </div>
         </div>
@@ -166,7 +156,7 @@ export default function App() {
         {error && !loading && (
           <div role="alert" className="text-center py-10">
             <p className="text-sm" style={{ color: 'var(--color-congestion-severe)' }}>{error}</p>
-            <button onClick={() => handleLoad(!hasData)} className="mt-2 min-h-11 px-3 text-sm underline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ color: 'var(--color-text-secondary)', outlineColor: 'var(--color-focus)' }}>
+            <button onClick={() => load(trendRange, !hasData)} className="mt-2 min-h-11 px-3 text-sm underline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ color: 'var(--color-text-secondary)', outlineColor: 'var(--color-focus)' }}>
               Try again
             </button>
           </div>
@@ -219,7 +209,7 @@ export default function App() {
               </StatusBadge>
               <span style={{ color: 'var(--color-text-muted)' }}>Updated {ageText(data!.lastUpdated)}</span>
               <button
-                onClick={() => handleLoad()}
+                onClick={() => load(trendRange)}
                 disabled={refreshing}
                 className="flex items-center gap-1.5 min-h-7 px-2 rounded-md font-medium transition-colors disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:bg-black/4 dark:hover:bg-white/6"
                 style={{
