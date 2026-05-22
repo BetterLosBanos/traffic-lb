@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { Car, RefreshCw, TrendingUp } from 'lucide-react'
+import { Car, RefreshCw, Activity, BarChart3, Settings2 } from 'lucide-react'
 import { TrafficCard } from './components/TrafficCard'
 import { TrendChart } from './components/TrendChart'
 import { RouteMap } from './components/RouteMap'
@@ -105,38 +105,50 @@ export default function App() {
                   left: page === 'live' ? 2 : 'calc(50% - 1px)',
                   right: page === 'live' ? 'calc(50% - 1px)' : 2,
                   backgroundColor: 'var(--color-surface-raised)',
-                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                  boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
                 }}
               />
-              {(['live', 'analytics'] as const).map(p => (
-                <button
-                  key={p}
-                  onClick={() => setPage(p)}
-                  className="relative z-10 min-h-7 w-18 text-xs font-medium rounded-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
-                  style={{
-                    color: page === p ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                    '--tw-ring-color': 'var(--color-focus)',
-                    '--tw-ring-offset-color': 'var(--color-surface-raised)',
-                  } as React.CSSProperties}
-                  aria-pressed={page === p}
-                >
-                  {p === 'live' ? 'Live' : 'Analytics'}
-                </button>
-              ))}
+              <button
+                onClick={() => setPage('live')}
+                className="relative z-10 min-h-7 px-2.5 text-xs font-medium rounded-sm flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
+                style={{
+                  color: page === 'live' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                  '--tw-ring-color': 'var(--color-focus)',
+                  '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                } as React.CSSProperties}
+                aria-pressed={page === 'live'}
+              >
+                <Activity size={12} aria-hidden="true" />
+                Live
+              </button>
+              <button
+                onClick={() => setPage('analytics')}
+                className="relative z-10 min-h-7 px-2.5 text-xs font-medium rounded-sm flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
+                style={{
+                  color: page === 'analytics' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                  '--tw-ring-color': 'var(--color-focus)',
+                  '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                } as React.CSSProperties}
+                aria-pressed={page === 'analytics'}
+              >
+                <BarChart3 size={12} aria-hidden="true" />
+                Analytics
+              </button>
             </div>
 
             {/* Detail toggle */}
             <button
               onClick={() => setDetailMode(!detailMode)}
-              className="text-xs font-medium rounded-md px-2.5 py-1.5 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
+              className="text-xs font-medium rounded-md px-2 py-1.5 flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
               style={{
                 color: detailMode ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
                 '--tw-ring-color': 'var(--color-focus)',
                 '--tw-ring-offset-color': 'var(--color-surface)',
               } as React.CSSProperties}
               aria-pressed={detailMode}
+              title={detailMode ? 'Simple view' : 'Detailed view'}
             >
-              <TrendingUp size={12} aria-hidden="true" />
+              <Settings2 size={13} aria-hidden="true" />
             </button>
 
             <ThemeToggle />
