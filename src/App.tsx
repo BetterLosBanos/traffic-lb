@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef } from 'react'
-import { Car, RefreshCw, Activity, BarChart3, Settings2 } from 'lucide-react'
+import { useState, useEffect, useRef, useCallback } from 'react'
+import { Car, RefreshCw, Activity, BarChart3, LayoutList, LayoutGrid } from 'lucide-react'
 import { TrafficCard } from './components/TrafficCard'
 import { TrendChart } from './components/TrendChart'
 import { RouteMap } from './components/RouteMap'
@@ -57,6 +57,72 @@ function corridorLabel(directionKey: string): string {
   return ''
 }
 
+function PageToggle({ page, setPage }: { page: 'live' | 'analytics'; setPage: (p: 'live' | 'analytics') => void }) {
+  const containerRef = useRef<HTMLDivElement>(null)
+  const liveRef = useRef<HTMLButtonElement>(null)
+  const analyticsRef = useRef<HTMLButtonElement>(null)
+  const [slider, setSlider] = useState({ left: 0, width: 0 })
+
+  const measure = useCallback(() => {
+    const btn = page === 'live' ? liveRef.current : analyticsRef.current
+    const container = containerRef.current
+    if (!btn || !container) return
+    const cRect = container.getBoundingClientRect()
+    const bRect = btn.getBoundingClientRect()
+    setSlider({ left: bRect.left - cRect.left, width: bRect.width })
+  }, [page])
+
+  useEffect(() => { measure() }, [measure])
+
+  return (
+    <div
+      ref={containerRef}
+      className="relative flex rounded-md border p-0.5"
+      style={{ backgroundColor: 'var(--color-surface-overlay)', borderColor: 'var(--color-border)' }}
+    >
+      <div
+        className="absolute top-0.5 bottom-0.5 rounded-[4px] transition-[left,width] duration-200 ease-out"
+        style={{
+          left: slider.left,
+          width: slider.width,
+          backgroundColor: 'var(--color-surface-raised)',
+          boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
+        }}
+      />
+      <button
+        ref={liveRef}
+        type="button"
+        onClick={() => setPage('live')}
+        className="relative z-10 h-7 px-2.5 text-xs font-medium rounded-[4px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
+        style={{
+          color: page === 'live' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+          '--tw-ring-color': 'var(--color-focus)',
+          '--tw-ring-offset-color': 'var(--color-surface-raised)',
+        } as React.CSSProperties}
+        aria-pressed={page === 'live'}
+      >
+        <Activity size={12} aria-hidden="true" />
+        Live
+      </button>
+      <button
+        ref={analyticsRef}
+        type="button"
+        onClick={() => setPage('analytics')}
+        className="relative z-10 h-7 px-2.5 text-xs font-medium rounded-[4px] flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
+        style={{
+          color: page === 'analytics' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+          '--tw-ring-color': 'var(--color-focus)',
+          '--tw-ring-offset-color': 'var(--color-surface-raised)',
+        } as React.CSSProperties}
+        aria-pressed={page === 'analytics'}
+      >
+        <BarChart3 size={12} aria-hidden="true" />
+        Analytics
+      </button>
+    </div>
+  )
+}
+
 export default function App() {
   const {
     data, history, samples, heatmap,
@@ -95,60 +161,28 @@ export default function App() {
           </span>
           <div className="flex items-center gap-1.5">
             {/* Page slider pill */}
-            <div
-              className="relative flex rounded-md p-0.5"
-              style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}
-            >
-              <div
-                className="absolute top-0.5 bottom-0.5 rounded-[4px] transition-[left,right] duration-200 ease-out"
-                style={{
-                  left: page === 'live' ? 2 : 'calc(50% - 1px)',
-                  right: page === 'live' ? 'calc(50% - 1px)' : 2,
-                  backgroundColor: 'var(--color-surface-raised)',
-                  boxShadow: '0 1px 3px rgba(0,0,0,0.12)',
-                }}
-              />
-              <button
-                onClick={() => setPage('live')}
-                className="relative z-10 min-h-7 px-2.5 text-xs font-medium rounded-sm flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
-                style={{
-                  color: page === 'live' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                  '--tw-ring-color': 'var(--color-focus)',
-                  '--tw-ring-offset-color': 'var(--color-surface-raised)',
-                } as React.CSSProperties}
-                aria-pressed={page === 'live'}
-              >
-                <Activity size={12} aria-hidden="true" />
-                Live
-              </button>
-              <button
-                onClick={() => setPage('analytics')}
-                className="relative z-10 min-h-7 px-2.5 text-xs font-medium rounded-sm flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
-                style={{
-                  color: page === 'analytics' ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                  '--tw-ring-color': 'var(--color-focus)',
-                  '--tw-ring-offset-color': 'var(--color-surface-raised)',
-                } as React.CSSProperties}
-                aria-pressed={page === 'analytics'}
-              >
-                <BarChart3 size={12} aria-hidden="true" />
-                Analytics
-              </button>
-            </div>
+            <PageToggle page={page} setPage={setPage} />
 
             {/* Detail toggle */}
             <button
+              type="button"
               onClick={() => setDetailMode(!detailMode)}
-              className="text-xs font-medium rounded-md px-2 py-1.5 flex items-center gap-1 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
+              className="h-8 w-8 rounded-md border flex items-center justify-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
               style={{
+                backgroundColor: detailMode ? 'var(--color-surface-raised)' : 'var(--color-surface-overlay)',
+                borderColor: 'var(--color-border)',
                 color: detailMode ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
                 '--tw-ring-color': 'var(--color-focus)',
                 '--tw-ring-offset-color': 'var(--color-surface)',
               } as React.CSSProperties}
               aria-pressed={detailMode}
+              aria-label={detailMode ? 'Switch to simple view' : 'Switch to detailed view'}
               title={detailMode ? 'Simple view' : 'Detailed view'}
             >
-              <Settings2 size={13} aria-hidden="true" />
+              {detailMode
+                ? <LayoutGrid size={14} aria-hidden="true" />
+                : <LayoutList size={14} aria-hidden="true" />
+              }
             </button>
 
             <ThemeToggle />

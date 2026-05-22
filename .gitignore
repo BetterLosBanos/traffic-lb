@@ -23,3 +23,6 @@ continue/
 .codex/
 context/
 CLAUDE.md
+
+# Graph output
+graphify-out/

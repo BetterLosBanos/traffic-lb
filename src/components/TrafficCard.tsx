@@ -97,20 +97,18 @@ function DirectionRow({ dir, label, detailMode, trendValues, onZoom }: Direction
         </div>
         <div className="flex items-center gap-2 mt-1">
           <div className="text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
-            {detailMode ? (
-              <>
-                {minutes} min now · {historicMin !== null ? `${historicMin} typical` : '—'} · {freeFlowMin !== null ? `${freeFlowMin} best time` : '—'} · {dir.currentSpeedKph} km/h
-              </>
-            ) : (
-              <>
-                {minutes} min now · <span style={{ color: cc, opacity: 0.65 }}>{ratioText}x</span> · {dir.currentSpeedKph} km/h
-              </>
-            )}
+            {minutes} min now · <span style={{ color: cc, opacity: 0.65 }}>{ratioText}x</span> · {dir.currentSpeedKph} km/h
           </div>
           {trendValues && trendValues.length >= 3 && (
             <Sparkline values={trendValues} color={cc} />
           )}
         </div>
+        {detailMode && (
+          <div className="flex items-center gap-2 mt-1 text-xs tabular-nums" style={{ color: 'var(--color-text-muted)' }}>
+            {historicMin !== null && <span>{historicMin} min typical</span>}
+            {freeFlowMin !== null && <span>{freeFlowMin} min best</span>}
+          </div>
+        )}
         {showTypical && !detailMode && (
           <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
             Typically +{typicalDelayMin} min at this time
