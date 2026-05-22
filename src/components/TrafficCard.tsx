@@ -1,5 +1,5 @@
 import { AlertTriangle } from 'lucide-react'
-import type { CongestionLevel, CorridorDirection, TrafficBaseline } from '../lib/types'
+import type { CongestionLevel, CorridorDirection } from '../lib/types'
 import { CORRIDOR_COLORS } from '../lib/types'
 import { StatusBadge } from './StatusBadge'
 
@@ -12,35 +12,24 @@ function congestionColor(level: CongestionLevel) {
   }
 }
 
-function tintOpacity(levels: CorridorDirection['usualCongestionLevel'][]): number {
-  const rank = (l: CorridorDirection['usualCongestionLevel']) => {
-    switch (l) { case 'light': return 1; case 'moderate': return 2; case 'heavy': return 3; case 'severe': return 4 }
-  }
-  const worst = Math.max(0, ...levels.map(rank))
-  return [0, 2, 5, 10, 15][worst] ?? 2
-}
-
 interface DirectionRowProps {
   dir: CorridorDirection
   label: string
   detailMode: boolean
-  baseline: TrafficBaseline
   onZoom?: () => void
 }
 
-function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRowProps) {
+function DirectionRow({ dir, label, detailMode, onZoom }: DirectionRowProps) {
   const minutes = Math.round(dir.durationSeconds / 60)
   const historicMin = dir.historicSeconds ? Math.round(dir.historicSeconds / 60) : null
   const freeFlowMin = dir.noTrafficSeconds ? Math.round(dir.noTrafficSeconds / 60) : null
 
-  const delayVsBaseline = baseline === 'usual' ? dir.usualDelaySeconds : dir.freeFlowDelaySeconds
-  const ratioVsBaseline = baseline === 'usual' ? dir.usualRatio : dir.freeFlowRatio
-  const congestionLevel = baseline === 'usual' ? dir.usualCongestionLevel : dir.freeFlowCongestionLevel
-
-  const delayMin = Math.round(delayVsBaseline / 60)
-  const cc = congestionColor(congestionLevel)
-  const hasDelay = delayVsBaseline > 0
-  const ratioText = ratioVsBaseline.toFixed(1)
+  const delayMin = Math.round(dir.freeFlowDelaySeconds / 60)
+  const typicalDelayMin = Math.round(dir.usualDelaySeconds / 60)
+  const cc = congestionColor(dir.freeFlowCongestionLevel)
+  const hasDelay = dir.freeFlowDelaySeconds > 0
+  const showTypical = dir.usualDelaySeconds > 60
+  const ratioText = dir.freeFlowRatio.toFixed(1)
 
   return (
     <div
@@ -56,7 +45,7 @@ function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRow
       onClick={onZoom}
       onKeyDown={onZoom ? (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onZoom() } } : undefined}
     >
-      {/* Hero: delay vs baseline */}
+      {/* Hero: delay vs free-flow */}
       <div className="self-center min-w-0">
         <div
           className="text-3xl sm:text-4xl font-black tabular-nums leading-none"
@@ -71,7 +60,7 @@ function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRow
         )}
       </div>
 
-      {/* Direction details - different based on mode */}
+      {/* Direction details */}
       <div className="min-w-0 self-center">
         <div className="flex items-center gap-1.5">
           <span className="text-sm font-semibold truncate" style={{ color: 'var(--color-text-primary)' }}>
@@ -84,7 +73,7 @@ function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRow
         <div className="text-sm tabular-nums mt-1" style={{ color: 'var(--color-text-secondary)' }}>
           {detailMode ? (
             <>
-              {minutes} min now · {historicMin !== null ? `${historicMin} usual` : '—'} · {freeFlowMin !== null ? `${freeFlowMin} best time` : '—'} · {dir.currentSpeedKph} km/h
+              {minutes} min now · {historicMin !== null ? `${historicMin} typical` : '—'} · {freeFlowMin !== null ? `${freeFlowMin} best time` : '—'} · {dir.currentSpeedKph} km/h
             </>
           ) : (
             <>
@@ -92,6 +81,11 @@ function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRow
             </>
           )}
         </div>
+        {showTypical && !detailMode && (
+          <div className="text-xs mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
+            Typically +{typicalDelayMin} min at this time
+          </div>
+        )}
       </div>
     </div>
   )
@@ -105,26 +99,17 @@ interface TrafficCardProps {
   forwardLabel: string
   reverseLabel: string
   detailMode: boolean
-  baseline: TrafficBaseline
   onDirectionZoom?: (dirKey: string) => void
 }
 
-export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, detailMode, baseline, onDirectionZoom }: TrafficCardProps) {
+export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, detailMode, onDirectionZoom }: TrafficCardProps) {
   const corridorColor = CORRIDOR_COLORS[corridorId] ?? 'var(--color-congestion-light)'
-
-  const levels: CorridorDirection['usualCongestionLevel'][] = [forward, reverse].filter(Boolean).map(d => baseline === 'usual' ? d!.usualCongestionLevel : d!.freeFlowCongestionLevel)
-  const tint = tintOpacity(levels)
 
   const allStale = (forward?.isStale ?? true) && (reverse?.isStale ?? true)
   const someStale = (forward?.isStale ?? false) || (reverse?.isStale ?? false)
 
   return (
-    <div
-      className="card overflow-hidden"
-      style={{
-        background: `color-mix(in srgb, ${corridorColor} ${tint}%, var(--color-surface-raised))`,
-      }}
-    >
+    <div className="card overflow-hidden">
       {/* Header */}
       <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: 'var(--color-border)' }}>
         <div className="flex items-center gap-2">
@@ -145,8 +130,8 @@ export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel,
 
       {/* Direction rows */}
       <div className="px-4">
-        {forward && <DirectionRow dir={forward} label={forwardLabel} detailMode={detailMode} baseline={baseline} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_f`) : undefined} />}
-        {reverse && <DirectionRow dir={reverse} label={reverseLabel} detailMode={detailMode} baseline={baseline} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_r`) : undefined} />}
+        {forward && <DirectionRow dir={forward} label={forwardLabel} detailMode={detailMode} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_f`) : undefined} />}
+        {reverse && <DirectionRow dir={reverse} label={reverseLabel} detailMode={detailMode} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_r`) : undefined} />}
       </div>
     </div>
   )

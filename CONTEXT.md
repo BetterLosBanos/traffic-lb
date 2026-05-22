@@ -1,5 +1,11 @@
 # Context
 
+## Design Principles
+
+### Forkable Traffic Monitor
+
+The app is designed to be easily forked by developers who want to monitor traffic for their own areas. Corridors, API keys, and collection schedule are the only things a forker must change. Architecture decisions should keep the code discoverable — a new developer should find the corridor config, the data fetch layer, and the component map within minutes of opening the repo.
+
 ## Glossary
 
 ### Corridor Direction
@@ -75,6 +81,8 @@ A provider-reported road condition whose geometry is inside or intersects the ap
 Traffic Incidents are explanatory context only. They do not determine congestion severity, because route travel time already reflects live traffic conditions.
 
 ### Flow Segment Checkpoint
+
+**Status: Planned, deferred.** See `docs/flow-segment-data-plan.md` for design and `docs/adr/0001-tomtom-source-of-truth.md` for the architectural decision. The `flow_segments` table exists but is not yet written to or queried.
 
 An app-owned point along a Corridor Direction used to request TomTom Flow Segment Data for the nearest road fragment. It may share coordinates with a route waypoint, but it exists to observe traffic, not to shape the route.
 

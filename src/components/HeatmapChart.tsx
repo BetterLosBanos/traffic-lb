@@ -310,7 +310,7 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
         <div
           className="fixed z-50 px-2 py-1.5 rounded text-xs pointer-events-none shadow-lg"
           style={{
-            backgroundColor: 'var(--color-surface-overlay)',
+            backgroundColor: 'var(--color-surface-raised)',
             border: '1px solid var(--color-border)',
             color: 'var(--color-text-primary)',
             left: tooltipPos.x + 12,

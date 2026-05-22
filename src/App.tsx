@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Car, RefreshCw, Calendar, TrendingUp } from 'lucide-react'
+import { Car, RefreshCw, TrendingUp } from 'lucide-react'
 import { TrafficCard } from './components/TrafficCard'
 import { TrendChart } from './components/TrendChart'
 import { RouteMap } from './components/RouteMap'
@@ -7,16 +7,15 @@ import { IncidentSummary } from './components/IncidentSummary'
 import { ThemeToggle } from './components/ThemeToggle'
 import { HeatmapChart } from './components/HeatmapChart'
 import { StatusBadge } from './components/StatusBadge'
-import { fetchLatest, fetchHistory, fetchSamples, fetchHeatmap } from './lib/api'
+import { useTrafficData, type TrendRange } from './lib/api'
 import { CORRIDORS } from './lib/types'
 import { ageText } from './lib/time'
-import type { LatestResponse, HistoryBucket, Incident, TrafficSamplePoint, CorridorDirection, HeatmapBucket, TrafficBaseline } from './lib/types'
-
-type TrendRange = '3h' | '12h' | '24h'
+import type { CorridorDirection } from './lib/types'
+import type { TrafficBaseline } from './lib/types'
 
 // ─── Dynamic hero summary ───────────────────────────────────────
 
-function heroSummary(corridors: Record<string, CorridorDirection>, baseline: TrafficBaseline): string {
+function heroSummary(corridors: Record<string, CorridorDirection>): string {
   const all = Object.values(corridors) as CorridorDirection[]
   if (all.length === 0) return 'No live traffic data yet'
 
@@ -25,22 +24,17 @@ function heroSummary(corridors: Record<string, CorridorDirection>, baseline: Tra
 
   const active = all.filter(d => !d.isStale)
 
-  // Calculate delay based on baseline
   const withDelay = active.map(d => ({
     ...d,
-    delayVsBaseline: baseline === 'usual'
-      ? d.usualDelaySeconds
-      : d.freeFlowDelaySeconds,
-    severity: baseline === 'usual'
-      ? d.usualCongestionLevel
-      : d.freeFlowCongestionLevel,
+    delay: d.freeFlowDelaySeconds,
+    severity: d.freeFlowCongestionLevel,
   }))
 
-  const worst = withDelay.sort((a, b) => b.delayVsBaseline - a.delayVsBaseline)[0]
+  const worst = withDelay.sort((a, b) => b.delay - a.delay)[0]
 
   if (!worst) return 'Traffic data may be outdated'
 
-  const delayMin = Math.round(worst.delayVsBaseline / 60)
+  const delayMin = Math.round(worst.delay / 60)
   const dirLabel = corridorLabel(worst.direction)
 
   if (delayMin <= 0 || worst.severity === 'light') return 'Roads moving well'
@@ -60,57 +54,28 @@ function corridorLabel(directionKey: string): string {
 // ─── App ────────────────────────────────────────────────────────
 
 export default function App() {
-  const [data, setData] = useState<LatestResponse | null>(null)
-  const [history, setHistory] = useState<HistoryBucket[]>([])
-  const [samples, setSamples] = useState<TrafficSamplePoint[]>([])
+  const {
+    data, history, samples, heatmap,
+    loading, refreshing, error,
+    corridors, incidents, load,
+  } = useTrafficData()
+
   const [trendRange, setTrendRange] = useState<TrendRange>('3h')
-  const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [error, setError] = useState<string | null>(null)
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null)
-  const [heatmap, setHeatmap] = useState<HeatmapBucket[]>([])
   const [detailMode, setDetailMode] = useState(false)
-  const [baseline, setBaseline] = useState<TrafficBaseline>('usual')
+  const [baseline] = useState<TrafficBaseline>('freeFlow')
   const [trendExpanded, setTrendExpanded] = useState(false)
   const [heatmapExpanded, setHeatmapExpanded] = useState(false)
 
-  const load = useCallback(async (initial = false) => {
-    if (initial) setLoading(true)
-    else setRefreshing(true)
-
-    try {
-      const trendRequest = trendRange === '3h'
-        ? fetchSamples(3)
-        : fetchHistory(trendRange === '12h' ? 12 : 24)
-      const [latest, hist, heat] = await Promise.all([
-        fetchLatest(),
-        trendRequest,
-        fetchHeatmap(14),
-      ])
-      setData(latest)
-      if (trendRange === '3h') {
-        setSamples(hist as TrafficSamplePoint[])
-        setHistory([])
-      } else {
-        setHistory(hist as HistoryBucket[])
-        setSamples([])
-      }
-      setHeatmap(heat.data)
-      setError(null)
-    } catch (err) {
-      console.error('[traffic-lb] Failed to fetch traffic data:', err)
-      setError('Unable to load traffic data')
-    } finally {
-      setLoading(false)
-      setRefreshing(false)
-    }
-  }, [trendRange])
+  const handleLoad = useCallback((initial = false) => {
+    load(trendRange, initial)
+  }, [load, trendRange])
 
   useEffect(() => {
-    load(data === null)
-    const interval = setInterval(load, 10 * 60 * 1000)
+    handleLoad(data === null)
+    const interval = setInterval(handleLoad, 10 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [load])
+  }, [handleLoad, data])
 
   useEffect(() => {
     if (detailMode) {
@@ -120,25 +85,9 @@ export default function App() {
   }, [detailMode])
 
   const isNoData = data?.status === 'no_data'
-  const corridors = data?.corridors ?? {}
   const hasData = data?.status === 'ok' && Object.keys(corridors).length > 0
   const isStale = hasData && Object.values(corridors).some((d: CorridorDirection) => d.isStale)
-  const summary = hasData ? heroSummary(corridors, baseline) : ''
-
-  // Deduplicate incidents across all corridor directions
-  const incidents: Incident[] = []
-  const seenIncidents = new Set<string>()
-  if (data?.status === 'ok') {
-    for (const dir of Object.values(corridors) as CorridorDirection[]) {
-      for (const inc of dir.incidents) {
-        const key = `${inc.type}|${inc.severity}|${inc.roadName}|${inc.from}|${inc.description}`
-        if (!seenIncidents.has(key)) {
-          seenIncidents.add(key)
-          incidents.push(inc)
-        }
-      }
-    }
-  }
+  const summary = hasData ? heroSummary(corridors) : ''
 
   return (
     <div className="min-h-screen textured" style={{ backgroundColor: 'var(--color-surface)' }}>
@@ -150,21 +99,6 @@ export default function App() {
             <span>Traffic Ba Sa LB?</span>
           </span>
           <div className="flex items-center gap-2">
-            <button
-              onClick={() => setBaseline(baseline === 'usual' ? 'freeFlow' : 'usual')}
-              className="text-xs font-medium rounded-md px-3 py-2 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
-              style={{
-                backgroundColor: baseline === 'freeFlow' ? 'var(--color-surface-overlay)' : 'transparent',
-                color: 'var(--color-text-secondary)',
-                border: '1px solid var(--color-border)',
-                '--tw-ring-color': 'var(--color-focus)',
-                '--tw-ring-offset-color': 'var(--color-surface)',
-              } as React.CSSProperties}
-              aria-pressed={baseline === 'freeFlow'}
-            >
-              <Calendar size={12} aria-hidden="true" />
-              {baseline === 'usual' ? 'Usual' : 'Best time'}
-            </button>
             <button
               onClick={() => setDetailMode(!detailMode)}
               className="text-xs font-medium rounded-md px-3 py-2 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
@@ -208,7 +142,7 @@ export default function App() {
         {error && !loading && (
           <div role="alert" className="text-center py-10">
             <p className="text-sm" style={{ color: 'var(--color-congestion-severe)' }}>{error}</p>
-            <button onClick={() => load(!hasData)} className="mt-2 min-h-11 px-3 text-sm underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ color: 'var(--color-text-secondary)', outlineColor: 'var(--color-focus)' }}>
+            <button onClick={() => handleLoad(!hasData)} className="mt-2 min-h-11 px-3 text-sm underline focus-visible:outline-2 focus-visible:outline-offset-2" style={{ color: 'var(--color-text-secondary)', outlineColor: 'var(--color-focus)' }}>
               Try again
             </button>
           </div>
@@ -247,7 +181,6 @@ export default function App() {
                     forwardLabel={forwardLabel}
                     reverseLabel={reverseLabel}
                     detailMode={detailMode}
-                    baseline={baseline}
                     onDirectionZoom={(dirKey) => {
                       const isForward = dirKey.endsWith('_f')
                       setFlyTo(isForward ? b : a)
@@ -264,7 +197,7 @@ export default function App() {
               </StatusBadge>
               <span style={{ color: 'var(--color-text-muted)' }}>Updated {ageText(data!.lastUpdated)}</span>
               <button
-                onClick={() => load()}
+                onClick={() => handleLoad()}
                 disabled={refreshing}
                 className="flex items-center gap-1.5 min-h-7 px-2 rounded-md font-medium transition-colors disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
                 style={{

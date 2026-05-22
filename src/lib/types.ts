@@ -34,10 +34,10 @@ export const CORRIDORS: CorridorDef[] = [
 ]
 
 export const CORRIDOR_COLORS: Record<string, string> = {
-  pansol: '#2563eb',      // blue-600
-  municipal: '#e11d48',   // rose-600
-  uplb: '#0f766e',        // teal-700
-  bay: '#9333ea',         // purple-600
+  pansol: '#6366f1',      // indigo-500
+  municipal: '#06b6d4',   // cyan-500
+  uplb: '#a855f7',        // violet-500
+  bay: '#ec4899',         // pink-500
 }
 
 // ─── Direction Data (from /api/traffic/latest) ───────────────────
