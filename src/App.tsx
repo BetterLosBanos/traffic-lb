@@ -97,15 +97,26 @@ export default function App() {
             <span>Traffic Ba Sa LB?</span>
           </span>
           <div className="flex items-center gap-2">
-            <div className="flex rounded-md p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
+            <div
+              className="relative flex rounded-md p-0.5"
+              style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}
+            >
+              <div
+                className="absolute top-0.5 bottom-0.5 rounded-sm transition-all duration-200 ease-out"
+                style={{
+                  left: page === 'live' ? '2px' : '50%',
+                  right: page === 'live' ? '50%' : '2px',
+                  backgroundColor: 'var(--color-surface-raised)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                }}
+              />
               {(['live', 'analytics'] as const).map(p => (
                 <button
                   key={p}
                   onClick={() => setPage(p)}
-                  className="min-h-7 px-3 text-xs font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
+                  className="relative z-10 min-h-7 px-3 text-xs font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-200"
                   style={{
                     color: page === p ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                    backgroundColor: page === p ? 'var(--color-surface-raised)' : 'transparent',
                     '--tw-ring-color': 'var(--color-focus)',
                     '--tw-ring-offset-color': 'var(--color-surface-raised)',
                   } as React.CSSProperties}
