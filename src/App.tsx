@@ -93,44 +93,52 @@ export default function App() {
             <Car size={18} strokeWidth={2.5} style={{ color: 'var(--color-congestion-light)' }} />
             <span>Traffic Ba Sa LB?</span>
           </span>
-          <div
-            className="flex items-center rounded-lg p-0.5 gap-0.5"
-            style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}
-          >
-            {(['live', 'analytics'] as const).map(p => (
-              <button
-                key={p}
-                onClick={() => setPage(p)}
-                className="min-h-7 px-3 text-xs font-medium rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all duration-200"
+          <div className="flex items-center gap-1.5">
+            {/* Page slider pill */}
+            <div
+              className="relative flex rounded-md p-0.5"
+              style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}
+            >
+              <div
+                className="absolute top-0.5 bottom-0.5 rounded-[4px] transition-[left,right] duration-200 ease-out"
                 style={{
-                  color: page === p ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                  backgroundColor: page === p ? 'var(--color-surface-raised)' : 'transparent',
-                  boxShadow: page === p ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
-                  '--tw-ring-color': 'var(--color-focus)',
-                  '--tw-ring-offset-color': 'var(--color-surface-raised)',
-                } as React.CSSProperties}
-                aria-pressed={page === p}
-              >
-                {p === 'live' ? 'Live' : 'Analytics'}
-              </button>
-            ))}
-            <div className="w-px self-stretch mx-0.5" style={{ backgroundColor: 'var(--color-border)' }} />
+                  left: page === 'live' ? 2 : 'calc(50% - 1px)',
+                  right: page === 'live' ? 'calc(50% - 1px)' : 2,
+                  backgroundColor: 'var(--color-surface-raised)',
+                  boxShadow: '0 1px 2px rgba(0,0,0,0.06)',
+                }}
+              />
+              {(['live', 'analytics'] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className="relative z-10 min-h-7 w-18 text-xs font-medium rounded-sm text-center focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
+                  style={{
+                    color: page === p ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                    '--tw-ring-color': 'var(--color-focus)',
+                    '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                  } as React.CSSProperties}
+                  aria-pressed={page === p}
+                >
+                  {p === 'live' ? 'Live' : 'Analytics'}
+                </button>
+              ))}
+            </div>
+
+            {/* Detail toggle */}
             <button
               onClick={() => setDetailMode(!detailMode)}
-              className="min-h-7 px-2.5 text-xs font-medium rounded-md flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all duration-200"
+              className="text-xs font-medium rounded-md px-2.5 py-1.5 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-colors duration-150"
               style={{
                 color: detailMode ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                backgroundColor: detailMode ? 'var(--color-surface-raised)' : 'transparent',
-                boxShadow: detailMode ? '0 1px 2px rgba(0,0,0,0.06)' : 'none',
                 '--tw-ring-color': 'var(--color-focus)',
-                '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                '--tw-ring-offset-color': 'var(--color-surface)',
               } as React.CSSProperties}
               aria-pressed={detailMode}
             >
               <TrendingUp size={12} aria-hidden="true" />
-              {detailMode ? 'Detailed' : 'Simple'}
             </button>
-            <div className="w-px self-stretch mx-0.5" style={{ backgroundColor: 'var(--color-border)' }} />
+
             <ThemeToggle />
           </div>
         </div>
