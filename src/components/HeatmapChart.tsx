@@ -1,6 +1,6 @@
 import { useState, useMemo } from 'react'
 import { Calendar } from 'lucide-react'
-import { CORRIDORS, type HeatmapBucket, type TrafficBaseline } from '../lib/types'
+import { CORRIDORS, type HeatmapBucket } from '../lib/types'
 
 interface HeatmapChartProps {
   data: HeatmapBucket[]
@@ -57,11 +57,9 @@ export function HeatmapChart({ data, expanded, onToggle }: HeatmapChartProps) {
   const [selectedDirection, setSelectedDirection] = useState<'f' | 'r'>('f')
   const [hoveredCell, setHoveredCell] = useState<{ dow: number; hr: number } | null>(null)
   const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
-  const [baseline, setBaseline] = useState<TrafficBaseline>('freeFlow')
 
-  // Select appropriate delay fields based on baseline
-  const p50Field: 'p50UsualDelaySeconds' | 'p50FreeFlowDelaySeconds' = baseline === 'usual' ? 'p50UsualDelaySeconds' : 'p50FreeFlowDelaySeconds'
-  const p90Field: 'p90UsualDelaySeconds' | 'p90FreeFlowDelaySeconds' = baseline === 'usual' ? 'p90UsualDelaySeconds' : 'p90FreeFlowDelaySeconds'
+  const p50Field = 'p50FreeFlowDelaySeconds' as const
+  const p90Field = 'p90FreeFlowDelaySeconds' as const
 
   const dirKey = `${selectedCorridor}_${selectedDirection}`
 
@@ -182,26 +180,6 @@ export function HeatmapChart({ data, expanded, onToggle }: HeatmapChartProps) {
               aria-pressed={selectedDirection === dir}
             >
               {dir === 'f' ? selectedCorridorDef.forwardLabel : selectedCorridorDef.reverseLabel}
-            </button>
-          ))}
-        </div>
-
-        {/* Baseline toggle */}
-        <div className="flex rounded-md p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
-          {(['usual', 'freeFlow'] as const).map(b => (
-            <button
-              key={b}
-              onClick={() => setBaseline(b)}
-              className="min-h-7 px-3 text-xs font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
-              style={{
-                color: baseline === b ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
-                backgroundColor: baseline === b ? 'var(--color-surface-raised)' : 'transparent',
-                '--tw-ring-color': 'var(--color-focus)',
-                '--tw-ring-offset-color': 'var(--color-surface-raised)',
-              } as React.CSSProperties}
-              aria-pressed={baseline === b}
-            >
-              {b === 'usual' ? 'Usual' : 'Best'}
             </button>
           ))}
         </div>

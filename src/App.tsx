@@ -10,9 +10,16 @@ import { StatusBadge } from './components/StatusBadge'
 import { useTrafficData, type TrendRange } from './lib/api'
 import { CORRIDORS } from './lib/types'
 import { ageText } from './lib/time'
-import type { CorridorDirection } from './lib/types'
+import type { CorridorDirection, DirectionSampleData, TrafficSamplePoint } from './lib/types'
 
-// ─── Dynamic hero summary ───────────────────────────────────────
+function extractTrend(samples: TrafficSamplePoint[], dirKey: string): number[] {
+  return samples
+    .map(s => {
+      const d = s[dirKey] as DirectionSampleData | undefined
+      return d?.freeFlowDelaySeconds
+    })
+    .filter((v): v is number => v != null)
+}
 
 function heroSummary(corridors: Record<string, CorridorDirection>): string {
   const all = Object.values(corridors) as CorridorDirection[]
@@ -50,8 +57,6 @@ function corridorLabel(directionKey: string): string {
   return ''
 }
 
-// ─── App ────────────────────────────────────────────────────────
-
 export default function App() {
   const {
     data, history, samples, heatmap,
@@ -59,11 +64,12 @@ export default function App() {
     corridors, incidents, load,
   } = useTrafficData()
 
+  const [page, setPage] = useState<'live' | 'analytics'>('live')
   const [trendRange, setTrendRange] = useState<TrendRange>('3h')
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null)
   const [detailMode, setDetailMode] = useState(false)
-  const [trendExpanded, setTrendExpanded] = useState(false)
-  const [heatmapExpanded, setHeatmapExpanded] = useState(false)
+  const [trendExpanded, setTrendExpanded] = useState(true)
+  const [heatmapExpanded, setHeatmapExpanded] = useState(true)
   const hasLoaded = useRef(false)
 
   const handleLoad = useCallback((initial = false) => {
@@ -77,13 +83,6 @@ export default function App() {
     return () => clearInterval(interval)
   }, [handleLoad])
 
-  useEffect(() => {
-    if (detailMode) {
-      setTrendExpanded(true)
-      setHeatmapExpanded(true)
-    }
-  }, [detailMode])
-
   const isNoData = data?.status === 'no_data'
   const hasData = data?.status === 'ok' && Object.keys(corridors).length > 0
   const isStale = hasData && Object.values(corridors).some((d: CorridorDirection) => d.isStale)
@@ -91,7 +90,6 @@ export default function App() {
 
   return (
     <div className="min-h-screen textured" style={{ backgroundColor: 'var(--color-surface)' }}>
-      {/* Top bar */}
       <header className="sticky top-0 z-40 backdrop-blur-md border-b" style={{ backgroundColor: 'color-mix(in srgb, var(--color-surface) 85%, transparent)', borderColor: 'var(--color-border)' }}>
         <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
           <span className="text-sm font-semibold tracking-tight flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
@@ -99,6 +97,24 @@ export default function App() {
             <span>Traffic Ba Sa LB?</span>
           </span>
           <div className="flex items-center gap-2">
+            <div className="flex rounded-md p-0.5" style={{ backgroundColor: 'var(--color-surface-overlay)', border: '1px solid var(--color-border)' }}>
+              {(['live', 'analytics'] as const).map(p => (
+                <button
+                  key={p}
+                  onClick={() => setPage(p)}
+                  className="min-h-7 px-3 text-xs font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
+                  style={{
+                    color: page === p ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
+                    backgroundColor: page === p ? 'var(--color-surface-raised)' : 'transparent',
+                    '--tw-ring-color': 'var(--color-focus)',
+                    '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                  } as React.CSSProperties}
+                  aria-pressed={page === p}
+                >
+                  {p === 'live' ? 'Live' : 'Analytics'}
+                </button>
+              ))}
+            </div>
             <button
               onClick={() => setDetailMode(!detailMode)}
               className="text-xs font-medium rounded-md px-3 py-2 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
@@ -120,7 +136,6 @@ export default function App() {
       </header>
 
       <main className="max-w-5xl mx-auto px-4 py-6 sm:py-10">
-        {/* Hero */}
         <div className="text-center mb-8">
           <h1 className="font-display text-4xl sm:text-5xl mb-2" style={{ color: 'var(--color-text-primary)' }}>
             Traffic Ba Sa LB<span className="font-display italic" style={{ color: 'var(--color-text-muted)' }}>?</span>
@@ -130,7 +145,6 @@ export default function App() {
           </p>
         </div>
 
-        {/* Loading */}
         {loading && (
           <div role="status" aria-live="polite" className="text-center py-16">
             <div className="inline-block w-5 h-5 border-2 rounded-full animate-spin" style={{ borderColor: 'var(--color-border)', borderTopColor: 'var(--color-congestion-moderate)' }} aria-hidden="true" />
@@ -138,7 +152,6 @@ export default function App() {
           </div>
         )}
 
-        {/* Error */}
         {error && !loading && (
           <div role="alert" className="text-center py-10">
             <p className="text-sm" style={{ color: 'var(--color-congestion-severe)' }}>{error}</p>
@@ -148,7 +161,6 @@ export default function App() {
           </div>
         )}
 
-        {/* No data */}
         {isNoData && !loading && (
           <div className="text-center py-16">
             <div className="text-4xl mb-4" role="img" aria-label="Construction sign">🚧</div>
@@ -161,10 +173,8 @@ export default function App() {
           </div>
         )}
 
-        {/* Data available */}
-        {hasData && !loading && (
+        {hasData && !loading && page === 'live' && (
           <>
-            {/* 1. Traffic cards */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-6">
               {CORRIDORS.map(({ id, label, forwardLabel, reverseLabel, a, b }) => {
                 const fwd = corridors[`${id}_f`]
@@ -181,6 +191,8 @@ export default function App() {
                     forwardLabel={forwardLabel}
                     reverseLabel={reverseLabel}
                     detailMode={detailMode}
+                    forwardTrend={extractTrend(samples, `${id}_f`)}
+                    reverseTrend={extractTrend(samples, `${id}_r`)}
                     onDirectionZoom={(dirKey) => {
                       const isForward = dirKey.endsWith('_f')
                       setFlyTo(isForward ? b : a)
@@ -190,7 +202,6 @@ export default function App() {
               })}
             </div>
 
-            {/* 2. Compact trust strip */}
             <div className="flex items-center justify-center gap-3 text-xs mb-8">
               <StatusBadge type={isStale ? 'warning' : 'success'} size="sm">
                 {isStale ? 'Stale' : 'Fresh'}
@@ -199,7 +210,7 @@ export default function App() {
               <button
                 onClick={() => handleLoad()}
                 disabled={refreshing}
-                className="flex items-center gap-1.5 min-h-7 px-2 rounded-md font-medium transition-colors disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:bg-black/4:hover:bg-white/[0.06]"
+                className="flex items-center gap-1.5 min-h-7 px-2 rounded-md font-medium transition-colors disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:bg-black/4 dark:hover:bg-white/6"
                 style={{
                   color: 'var(--color-text-secondary)',
                   '--tw-ring-color': 'var(--color-focus)',
@@ -211,19 +222,20 @@ export default function App() {
               </button>
             </div>
 
-            {/* 3. Reported issues */}
             <IncidentSummary
               incidents={incidents}
               detailMode={detailMode}
               onIncidentClick={(inc) => inc.lat != null && setFlyTo({ lat: inc.lat!, lng: inc.lng! })}
             />
 
-            {/* 4. Route map */}
             <div className="mb-4">
               <RouteMap corridors={corridors} flyTo={flyTo} />
             </div>
+          </>
+        )}
 
-            {/* 5. Traffic trend - collapsible */}
+        {hasData && !loading && page === 'analytics' && (
+          <>
             <div className="mb-4">
               <TrendChart
                 history={history}
@@ -235,7 +247,6 @@ export default function App() {
               />
             </div>
 
-            {/* 6. Weekly pattern heatmap - collapsible */}
             {heatmap.length > 0 && (
               <div className="mb-4">
                 <HeatmapChart

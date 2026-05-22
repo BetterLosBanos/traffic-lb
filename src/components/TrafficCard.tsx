@@ -1,7 +1,8 @@
-import { AlertTriangle } from 'lucide-react'
+import { AlertTriangle, TrendingUp, TrendingDown, Minus } from 'lucide-react'
 import type { CongestionLevel, CorridorDirection } from '../lib/types'
 import { CORRIDOR_COLORS } from '../lib/types'
 import { StatusBadge } from './StatusBadge'
+import { Sparkline } from './Sparkline'
 
 function congestionColor(level: CongestionLevel) {
   switch (level) {
@@ -12,14 +13,36 @@ function congestionColor(level: CongestionLevel) {
   }
 }
 
+type TrendDirection = 'up' | 'down' | 'flat'
+
+function TrendMarker({ direction }: { direction: TrendDirection }) {
+  const color = 'var(--color-text-muted)'
+  if (direction === 'up') return <TrendingUp size={11} style={{ color, flexShrink: 0 }} aria-label="Getting worse" />
+  if (direction === 'down') return <TrendingDown size={11} style={{ color, flexShrink: 0 }} aria-label="Clearing" />
+  return <Minus size={11} style={{ color, flexShrink: 0 }} aria-label="Steady" />
+}
+
+function inferTrend(values: number[]): TrendDirection {
+  if (values.length < 3) return 'flat'
+  const recent = values.slice(-3)
+  const first = recent[0]
+  const last = recent[recent.length - 1]
+  const delta = last - first
+  // Threshold: 30 seconds to avoid noise
+  if (delta > 30) return 'up'
+  if (delta < -30) return 'down'
+  return 'flat'
+}
+
 interface DirectionRowProps {
   dir: CorridorDirection
   label: string
   detailMode: boolean
+  trendValues?: number[]
   onZoom?: () => void
 }
 
-function DirectionRow({ dir, label, detailMode, onZoom }: DirectionRowProps) {
+function DirectionRow({ dir, label, detailMode, trendValues, onZoom }: DirectionRowProps) {
   const minutes = Math.round(dir.durationSeconds / 60)
   const historicMin = dir.historicSeconds ? Math.round(dir.historicSeconds / 60) : null
   const freeFlowMin = dir.noTrafficSeconds ? Math.round(dir.noTrafficSeconds / 60) : null
@@ -30,6 +53,7 @@ function DirectionRow({ dir, label, detailMode, onZoom }: DirectionRowProps) {
   const hasDelay = dir.freeFlowDelaySeconds > 0
   const showTypical = dir.usualDelaySeconds > 60
   const ratioText = dir.freeFlowRatio.toFixed(1)
+  const trend = trendValues && trendValues.length >= 3 ? inferTrend(trendValues) : null
 
   return (
     <div
@@ -69,16 +93,22 @@ function DirectionRow({ dir, label, detailMode, onZoom }: DirectionRowProps) {
           {dir.isStale && (
             <AlertTriangle size={11} style={{ color: 'var(--color-text-muted)', flexShrink: 0 }} />
           )}
+          {trend && <TrendMarker direction={trend} />}
         </div>
-        <div className="text-sm tabular-nums mt-1" style={{ color: 'var(--color-text-secondary)' }}>
-          {detailMode ? (
-            <>
-              {minutes} min now · {historicMin !== null ? `${historicMin} typical` : '—'} · {freeFlowMin !== null ? `${freeFlowMin} best time` : '—'} · {dir.currentSpeedKph} km/h
-            </>
-          ) : (
-            <>
-              {minutes} min now · <span style={{ color: cc, opacity: 0.65 }}>{ratioText}x</span> · {dir.currentSpeedKph} km/h
-            </>
+        <div className="flex items-center gap-2 mt-1">
+          <div className="text-sm tabular-nums" style={{ color: 'var(--color-text-secondary)' }}>
+            {detailMode ? (
+              <>
+                {minutes} min now · {historicMin !== null ? `${historicMin} typical` : '—'} · {freeFlowMin !== null ? `${freeFlowMin} best time` : '—'} · {dir.currentSpeedKph} km/h
+              </>
+            ) : (
+              <>
+                {minutes} min now · <span style={{ color: cc, opacity: 0.65 }}>{ratioText}x</span> · {dir.currentSpeedKph} km/h
+              </>
+            )}
+          </div>
+          {trendValues && trendValues.length >= 3 && (
+            <Sparkline values={trendValues} color={cc} />
           )}
         </div>
         {showTypical && !detailMode && (
@@ -99,10 +129,12 @@ interface TrafficCardProps {
   forwardLabel: string
   reverseLabel: string
   detailMode: boolean
+  forwardTrend?: number[]
+  reverseTrend?: number[]
   onDirectionZoom?: (dirKey: string) => void
 }
 
-export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, detailMode, onDirectionZoom }: TrafficCardProps) {
+export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, detailMode, forwardTrend, reverseTrend, onDirectionZoom }: TrafficCardProps) {
   const corridorColor = CORRIDOR_COLORS[corridorId] ?? 'var(--color-congestion-light)'
 
   const allStale = (forward?.isStale ?? true) && (reverse?.isStale ?? true)
@@ -130,8 +162,8 @@ export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel,
 
       {/* Direction rows */}
       <div className="px-4">
-        {forward && <DirectionRow dir={forward} label={forwardLabel} detailMode={detailMode} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_f`) : undefined} />}
-        {reverse && <DirectionRow dir={reverse} label={reverseLabel} detailMode={detailMode} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_r`) : undefined} />}
+        {forward && <DirectionRow dir={forward} label={forwardLabel} detailMode={detailMode} trendValues={forwardTrend} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_f`) : undefined} />}
+        {reverse && <DirectionRow dir={reverse} label={reverseLabel} detailMode={detailMode} trendValues={reverseTrend} onZoom={onDirectionZoom ? () => onDirectionZoom(`${corridorId}_r`) : undefined} />}
       </div>
     </div>
   )

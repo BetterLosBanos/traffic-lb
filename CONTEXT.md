@@ -6,6 +6,14 @@
 
 The app is designed to be easily forked by developers who want to monitor traffic for their own areas. Corridors, API keys, and collection schedule are the only things a forker must change. Architecture decisions should keep the code discoverable — a new developer should find the corridor config, the data fetch layer, and the component map within minutes of opening the repo.
 
+### Departure Decision Priority
+
+The app's primary purpose is helping commuters decide whether to leave now, wait, or reroute. Analytics features serve this goal first. Civic advocacy (showing chronic congestion to LGU) is a secondary use case served by the same data.
+
+### Two-Tab Layout
+
+The app has two views: Live (default) and Analytics. Live shows traffic cards with inline sparklines and direction markers, incidents, and the map — a 10-second scan for commuters. Analytics shows trend charts and heatmap for deeper analysis. Tabs are state-based, no URL routing.
+
 ## Glossary
 
 ### Corridor Direction
