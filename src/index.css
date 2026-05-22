@@ -22,7 +22,24 @@
 
   /* Borders & focus */
   --color-border: var(--color-kapwa-border-weak);
+  --color-border-strong: var(--color-kapwa-border-strong);
+  --color-border-success: var(--color-kapwa-border-success);
+  --color-border-warning: var(--color-kapwa-border-warning);
+  --color-border-danger: var(--color-kapwa-border-danger);
+  --color-border-info: var(--color-kapwa-border-info);
   --color-focus: var(--color-kapwa-border-focus);
+
+  /* Status backgrounds (weak tints for badges, banners) */
+  --color-bg-success-weak: var(--color-kapwa-bg-success-weak);
+  --color-bg-warning-weak: var(--color-kapwa-bg-warning-weak);
+  --color-bg-danger-weak: var(--color-kapwa-bg-danger-weak);
+  --color-bg-info-weak: var(--color-kapwa-bg-info-weak);
+
+  /* Status text colors */
+  --color-text-success: var(--color-kapwa-text-success);
+  --color-text-warning: var(--color-kapwa-text-warning);
+  --color-text-danger: var(--color-kapwa-text-danger);
+  --color-text-info: var(--color-kapwa-text-info);
 
   /* Congestion severity → kapwa semantic */
   --color-congestion-light: var(--color-kapwa-text-success);
@@ -43,6 +60,22 @@
   --color-toggle-shadow: hsla(210, 9%, 13%, 0.22);
   --color-toggle-icon-sun: var(--color-kapwa-orange-500);
   --color-toggle-icon-moon: var(--color-kapwa-blue-300);
+
+  /* Motion tokens (for consistent transitions) */
+  --duration-fast: var(--duration-kapwa-150);
+  --duration-normal: var(--duration-kapwa-300);
+  --ease-out: var(--ease-kapwa-out);
+
+  /* Spacing tokens (for consistent gaps) */
+  --gap-xs: var(--spacing-kapwa-xs);
+  --gap-sm: var(--spacing-kapwa-sm);
+  --gap-md: var(--spacing-kapwa-md);
+  --gap-lg: var(--spacing-kapwa-lg);
+
+  /* Shadow tokens */
+  --shadow-xs: var(--shadow-xs);
+  --shadow-sm: var(--shadow-sm);
+  --shadow-md: var(--shadow-md);
 }
 
 @layer base {
@@ -63,7 +96,16 @@
     --color-text-secondary: var(--color-kapwa-gray-400);
     --color-text-muted: var(--color-kapwa-gray-400);
     --color-border: var(--color-kapwa-gray-700);
+    --color-border-strong: var(--color-kapwa-gray-600);
     --color-focus: var(--color-kapwa-blue-400);
+    --color-bg-success-weak: var(--color-kapwa-green-950);
+    --color-bg-warning-weak: var(--color-kapwa-orange-950);
+    --color-bg-danger-weak: var(--color-kapwa-red-950);
+    --color-bg-info-weak: var(--color-kapwa-blue-950);
+    --color-text-success: var(--color-kapwa-green-300);
+    --color-text-warning: var(--color-kapwa-orange-300);
+    --color-text-danger: var(--color-kapwa-red-300);
+    --color-text-info: var(--color-kapwa-blue-300);
     --color-congestion-light: var(--color-kapwa-green-400);
     --color-congestion-moderate: var(--color-kapwa-yellow-400);
     --color-congestion-heavy: var(--color-kapwa-orange-400);

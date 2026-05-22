@@ -1,6 +1,6 @@
 import { TrendingUp } from 'lucide-react'
 import { useState, useMemo } from 'react'
-import type { HistoryBucket, TrafficSamplePoint } from '../lib/types'
+import type { HistoryBucket, TrafficBaseline, TrafficSamplePoint } from '../lib/types'
 import { CORRIDORS, CORRIDOR_COLORS } from '../lib/types'
 
 type TrendRange = '3h' | '12h' | '24h'
@@ -13,7 +13,7 @@ interface TrendChartProps {
   onRangeChange: (range: TrendRange) => void
   expanded: boolean
   onToggle: () => void
-  baseline: 'historic' | 'ideal'
+  baseline: TrafficBaseline
 }
 
 interface ChartSeries {
@@ -39,38 +39,39 @@ function secondsToMinutes(seconds: number) {
 }
 
 interface HistoryDirData {
-  avgDelay: number
-  avgRatio: number
+  avgDuration: number
+  avgNoTraffic: number
+  avgHistoric: number | null
+  avgUsualDelaySeconds: number
+  avgFreeFlowDelaySeconds: number
+  avgUsualRatio: number
+  avgFreeFlowRatio: number
 }
 
 interface SampleDirData {
   durationSeconds: number
   noTrafficSeconds: number
-  congestionRatio: number
-  delaySeconds: number
+  historicSeconds: number | null
+  usualDelaySeconds: number
+  freeFlowDelaySeconds: number
+  usualRatio: number
+  freeFlowRatio: number
 }
 
-function extractValue(entry: HistoryDirData | SampleDirData | undefined, metric: TrendMetric, baseline: 'historic' | 'ideal'): number | null {
+function extractValue(entry: HistoryDirData | SampleDirData | undefined, metric: TrendMetric, baseline: TrafficBaseline): number | null {
   if (!entry) return null
 
-  if (baseline === 'ideal') {
-    // Freeflow-based calculations
-    if ('durationSeconds' in entry) {
-      // SampleDirData
-      const sample = entry as SampleDirData
-      if (metric === 'delay') return secondsToMinutes(sample.durationSeconds - sample.noTrafficSeconds)
-      return sample.durationSeconds / sample.noTrafficSeconds
-    } else {
-      // HistoryDirData
-      const hist = entry as HistoryDirData
-      if (metric === 'delay') return secondsToMinutes(hist.avgDuration - hist.avgNoTraffic)
-      return hist.avgDuration / hist.avgNoTraffic
+  if ('durationSeconds' in entry) {
+    if (metric === 'delay') {
+      return secondsToMinutes(baseline === 'usual' ? entry.usualDelaySeconds : entry.freeFlowDelaySeconds)
     }
+    return baseline === 'usual' ? entry.usualRatio : entry.freeFlowRatio
   }
 
-  // Historic-based (default)
-  if (metric === 'delay') return secondsToMinutes('delaySeconds' in entry ? entry.delaySeconds : entry.avgDelay)
-  return 'congestionRatio' in entry ? entry.congestionRatio : entry.avgRatio
+  if (metric === 'delay') {
+    return secondsToMinutes(baseline === 'usual' ? entry.avgUsualDelaySeconds : entry.avgFreeFlowDelaySeconds)
+  }
+  return baseline === 'usual' ? entry.avgUsualRatio : entry.avgFreeFlowRatio
 }
 
 function formatTime(value: string, range: TrendRange) {
@@ -105,7 +106,7 @@ function formatValue(value: number, metric: TrendMetric) {
     const rounded = Math.round(value)
     return rounded > 0 ? `+${rounded} min` : rounded < 0 ? `${rounded} min` : '0 min'
   }
-  return `${value.toFixed(2)}x`
+  return `${value.toFixed(1)}x`
 }
 
 // Get dir keys from data — validate by suffix to avoid matching future non-direction object fields
@@ -169,7 +170,7 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
 
   // Smart y-axis range: include 0 for delay, 1x for multiplier, but don't waste space
   const minValue = metric === 'multiplier'
-    ? (baseline === 'historic' ? Math.min(0.8, dataMin) : 1)
+    ? (baseline === 'usual' ? Math.min(0.8, dataMin) : 1)
     : Math.min(0, dataMin) // Never go below 0 for delay
   const maxValue = niceCeil(Math.max(metric === 'delay' ? 5 : 1.5, dataMax))
   const tickCount = 5
@@ -286,12 +287,13 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
                     key={option}
                     type="button"
                     onClick={() => setMetric(option)}
-                    className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
                     style={{
                       color: metric === option ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
                       backgroundColor: metric === option ? 'var(--color-surface-raised)' : 'transparent',
-                      outlineColor: 'var(--color-focus)',
-                    }}
+                      '--tw-ring-color': 'var(--color-focus)',
+                      '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                    } as React.CSSProperties}
                     aria-pressed={metric === option}
                   >
                     {METRIC_LABELS[option]}
@@ -304,12 +306,13 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
                     key={option}
                     type="button"
                     onClick={() => onRangeChange(option)}
-                    className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+                    className="min-h-9 rounded-md px-3 text-xs font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
                     style={{
                       color: range === option ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
                       backgroundColor: range === option ? 'var(--color-surface-raised)' : 'transparent',
-                      outlineColor: 'var(--color-focus)',
-                    }}
+                      '--tw-ring-color': 'var(--color-focus)',
+                      '--tw-ring-offset-color': 'var(--color-surface-raised)',
+                    } as React.CSSProperties}
                     aria-pressed={range === option}
                   >
                     {RANGE_LABELS[option]}
@@ -332,7 +335,7 @@ export function TrendChart({ history, samples, range, onRangeChange, expanded, o
                 <g key={tick}>
                   <line x1={pad.left} y1={y(tick)} x2={width - pad.right} y2={y(tick)} stroke={gridColor} strokeDasharray={isBaseline ? undefined : '4'} strokeWidth={isBaseline ? 1.2 : 0.7} />
                   <text x={pad.left - 8} y={y(tick) + 4} textAnchor="end" fontSize="13" fontWeight={isBaseline ? 600 : 500} fill={mutedColor}>
-                    {metric === 'delay' ? `${Math.round(tick)}` : `${tick.toFixed(tick >= 10 ? 0 : tick % 1 === 0 ? 0 : 1)}x`}
+                    {metric === 'delay' ? `${Math.round(tick)}` : `${tick.toFixed(1)}x`}
                   </text>
                 </g>
               )

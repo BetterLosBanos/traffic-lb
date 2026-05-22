@@ -1,8 +1,9 @@
 import { AlertTriangle } from 'lucide-react'
-import type { CorridorDirection } from '../lib/types'
+import type { CongestionLevel, CorridorDirection, TrafficBaseline } from '../lib/types'
 import { CORRIDOR_COLORS } from '../lib/types'
+import { StatusBadge } from './StatusBadge'
 
-function congestionColor(level: CorridorDirection['congestionLevel']) {
+function congestionColor(level: CongestionLevel) {
   switch (level) {
     case 'light': return 'var(--color-congestion-light)'
     case 'moderate': return 'var(--color-congestion-moderate)'
@@ -11,15 +12,8 @@ function congestionColor(level: CorridorDirection['congestionLevel']) {
   }
 }
 
-function congestionColorForRatio(ratio: number): string {
-  if (ratio < 1.25) return 'var(--color-congestion-light)'
-  if (ratio < 1.75) return 'var(--color-congestion-moderate)'
-  if (ratio < 2.5) return 'var(--color-congestion-heavy)'
-  return 'var(--color-congestion-severe)'
-}
-
-function tintOpacity(levels: CorridorDirection['congestionLevel'][]): number {
-  const rank = (l: CorridorDirection['congestionLevel']) => {
+function tintOpacity(levels: CorridorDirection['usualCongestionLevel'][]): number {
+  const rank = (l: CorridorDirection['usualCongestionLevel']) => {
     switch (l) { case 'light': return 1; case 'moderate': return 2; case 'heavy': return 3; case 'severe': return 4 }
   }
   const worst = Math.max(0, ...levels.map(rank))
@@ -30,27 +24,33 @@ interface DirectionRowProps {
   dir: CorridorDirection
   label: string
   detailMode: boolean
-  baseline: 'historic' | 'ideal'
+  baseline: TrafficBaseline
   onZoom?: () => void
 }
 
 function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRowProps) {
   const minutes = Math.round(dir.durationSeconds / 60)
   const historicMin = dir.historicSeconds ? Math.round(dir.historicSeconds / 60) : null
-  const idealMin = dir.noTrafficSeconds ? Math.round(dir.noTrafficSeconds / 60) : null
+  const freeFlowMin = dir.noTrafficSeconds ? Math.round(dir.noTrafficSeconds / 60) : null
 
-  const baselineMin = baseline === 'historic' ? historicMin : idealMin
-  const delayVsBaseline = baselineMin !== null ? minutes - baselineMin : 0
-  const ratioVsBaseline = baselineMin !== null && baselineMin > 0 ? minutes / baselineMin : 1
+  const delayVsBaseline = baseline === 'usual' ? dir.usualDelaySeconds : dir.freeFlowDelaySeconds
+  const ratioVsBaseline = baseline === 'usual' ? dir.usualRatio : dir.freeFlowRatio
+  const congestionLevel = baseline === 'usual' ? dir.usualCongestionLevel : dir.freeFlowCongestionLevel
 
-  const cc = baseline === 'historic' ? congestionColor(dir.congestionLevel) : congestionColorForRatio(ratioVsBaseline)
+  const delayMin = Math.round(delayVsBaseline / 60)
+  const cc = congestionColor(congestionLevel)
   const hasDelay = delayVsBaseline > 0
   const ratioText = ratioVsBaseline.toFixed(1)
 
   return (
     <div
-      className={`grid grid-cols-[5rem_1fr] gap-3 py-3 border-b last:border-b-0 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2${onZoom ? ' cursor-pointer hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.07]' : ''}`}
-      style={{ borderColor: 'var(--color-border)', opacity: dir.isStale ? 0.75 : 1, outlineColor: 'var(--color-focus)' }}
+      className={`grid grid-cols-[5rem_1fr] gap-3 py-3 border-b last:border-b-0 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 rounded-md${onZoom ? ' cursor-pointer hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.07]' : ''}`}
+      style={{
+        borderColor: 'var(--color-border)',
+        opacity: dir.isStale ? 0.75 : 1,
+        '--tw-ring-color': 'var(--color-focus)',
+        '--tw-ring-offset-color': 'var(--color-surface-raised)',
+      } as React.CSSProperties}
       role={onZoom ? 'button' : undefined}
       tabIndex={onZoom ? 0 : undefined}
       onClick={onZoom}
@@ -62,7 +62,7 @@ function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRow
           className="text-3xl sm:text-4xl font-black tabular-nums leading-none"
           style={{ color: hasDelay ? cc : 'var(--color-congestion-light)' }}
         >
-          {hasDelay ? `+${delayVsBaseline}` : 'OK'}
+          {hasDelay ? `+${delayMin}` : 'OK'}
         </div>
         {hasDelay && (
           <div className="text-xs font-medium mt-0.5" style={{ color: 'var(--color-text-muted)' }}>
@@ -84,7 +84,7 @@ function DirectionRow({ dir, label, detailMode, baseline, onZoom }: DirectionRow
         <div className="text-sm tabular-nums mt-1" style={{ color: 'var(--color-text-secondary)' }}>
           {detailMode ? (
             <>
-              {minutes} min now · {historicMin !== null ? `${historicMin} usual` : '—'} · {idealMin !== null ? `${idealMin} best time` : '—'} · {dir.currentSpeedKph} km/h
+              {minutes} min now · {historicMin !== null ? `${historicMin} usual` : '—'} · {freeFlowMin !== null ? `${freeFlowMin} best time` : '—'} · {dir.currentSpeedKph} km/h
             </>
           ) : (
             <>
@@ -105,19 +105,18 @@ interface TrafficCardProps {
   forwardLabel: string
   reverseLabel: string
   detailMode: boolean
-  baseline: 'historic' | 'ideal'
+  baseline: TrafficBaseline
   onDirectionZoom?: (dirKey: string) => void
 }
 
 export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel, reverseLabel, detailMode, baseline, onDirectionZoom }: TrafficCardProps) {
   const corridorColor = CORRIDOR_COLORS[corridorId] ?? 'var(--color-congestion-light)'
 
-  const levels: CorridorDirection['congestionLevel'][] = [forward, reverse].filter(Boolean).map(d => d!.congestionLevel)
+  const levels: CorridorDirection['usualCongestionLevel'][] = [forward, reverse].filter(Boolean).map(d => baseline === 'usual' ? d!.usualCongestionLevel : d!.freeFlowCongestionLevel)
   const tint = tintOpacity(levels)
 
   const allStale = (forward?.isStale ?? true) && (reverse?.isStale ?? true)
   const someStale = (forward?.isStale ?? false) || (reverse?.isStale ?? false)
-  const staleText = allStale ? 'stale' : someStale ? 'partial' : null
 
   return (
     <div
@@ -132,11 +131,15 @@ export function TrafficCard({ corridorId, label, forward, reverse, forwardLabel,
           <span className="w-2 h-2 rounded-full flex-shrink-0 opacity-70" style={{ backgroundColor: corridorColor }} />
           <span className="text-sm font-semibold" style={{ color: 'var(--color-text-primary)' }}>{label}</span>
         </div>
-        {staleText && (
-          <span className="flex items-center gap-1 text-xs" style={{ color: 'var(--color-text-muted)' }}>
-            <AlertTriangle size={10} />
-            {staleText}
-          </span>
+        {allStale && (
+          <StatusBadge type="warning" size="sm">
+            Stale
+          </StatusBadge>
+        )}
+        {someStale && !allStale && (
+          <StatusBadge type="info" size="sm">
+            Partial
+          </StatusBadge>
         )}
       </div>
 

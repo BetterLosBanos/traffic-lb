@@ -1,6 +1,7 @@
 import { AlertTriangle } from 'lucide-react'
 import type { Incident } from '../lib/types'
 import { ageText, durationSinceText } from '../lib/time'
+import { StatusBadge, type StatusType } from './StatusBadge'
 
 interface IncidentSummaryProps {
   incidents: Incident[]
@@ -38,73 +39,44 @@ function hasKnownSeverity(severity: string) {
   return normalizeKey(severity) !== 'unknown'
 }
 
-function severityColor(severity: string) {
+function severityType(severity: string): StatusType {
   const rank = severityRank(severity)
-  if (rank >= 5) return 'var(--color-congestion-severe)'
-  if (rank >= 4) return 'var(--color-congestion-heavy)'
-  if (rank >= 3) return 'var(--color-congestion-moderate)'
-  return 'var(--color-text-muted)'
+  if (rank >= 5) return 'danger'
+  if (rank >= 4) return 'danger'
+  if (rank >= 3) return 'warning'
+  return 'default'
 }
 
-function severityBadgeStyle(severity: string) {
-  const rank = severityRank(severity)
-
-  if (rank >= 5) {
-    return {
-      color: 'var(--color-incident-severe-text)',
-      backgroundColor: 'var(--color-incident-severe-bg)',
-    }
-  }
-
-  if (rank >= 4) {
-    return {
-      color: 'var(--color-incident-major-text)',
-      backgroundColor: 'var(--color-incident-major-bg)',
-    }
-  }
-
-  if (rank >= 3) {
-    return {
-      color: 'var(--color-incident-moderate-text)',
-      backgroundColor: 'var(--color-incident-moderate-bg)',
-    }
-  }
-
-  return {
-    color: 'var(--color-text-muted)',
-    backgroundColor: 'color-mix(in srgb, var(--color-text-muted) 10%, transparent)',
-  }
-}
-
-function worstSeverityColor(incidents: Incident[]) {
-  return incidents.reduce((worst, inc) => {
-    const rank = severityRank(inc.severity)
-    return rank > worst.rank ? { rank, color: severityColor(inc.severity) } : worst
-  }, { rank: 0, color: 'var(--color-congestion-moderate)' }).color
+function worstSeverityType(incidents: Incident[]): StatusType {
+  const maxRank = incidents.reduce((worst, inc) => Math.max(worst, severityRank(inc.severity)), 0)
+  if (maxRank >= 5) return 'danger'
+  if (maxRank >= 4) return 'danger'
+  if (maxRank >= 3) return 'warning'
+  return 'info'
 }
 
 function incidentTiming(inc: Incident) {
-  if (inc.timeValidity === 'future') return { label: 'Upcoming', color: 'var(--color-text-muted)' }
-  if (inc.hasExpiredEndTime) return { label: 'May have ended', color: 'var(--color-congestion-heavy)' }
+  if (inc.timeValidity === 'future') return { label: 'Upcoming', type: 'default' as StatusType }
+  if (inc.hasExpiredEndTime) return { label: 'May have ended', type: 'warning' as StatusType }
 
   const duration = durationSinceText(inc.startedAt)
-  if (duration) return { label: `Ongoing ${duration}`, color: severityColor(inc.severity) }
+  if (duration) return { label: `Ongoing ${duration}`, type: severityType(inc.severity) }
 
-  return { label: 'Start time unavailable', color: 'var(--color-text-muted)' }
+  return { label: 'Start time unavailable', type: 'default' as StatusType }
 }
 
 export function IncidentSummary({ incidents, detailMode, onIncidentClick }: IncidentSummaryProps) {
   if (incidents.length === 0) return null
 
-  const worstColor = worstSeverityColor(incidents)
+  const worstType = worstSeverityType(incidents)
 
   return (
     <section
       className="card mb-5 p-4 overflow-hidden"
       aria-label="Reported traffic issues"
       style={{
-        borderTop: `2px solid ${worstColor}`,
-        backgroundColor: `color-mix(in srgb, ${worstColor} 4%, var(--color-surface-raised))`,
+        borderTop: `2px solid var(--color-border-${worstType === 'default' ? 'info' : worstType})`,
+        backgroundColor: `color-mix(in srgb, var(--color-bg-${worstType === 'default' ? 'info' : worstType}-weak) 50%, var(--color-surface-raised))`,
       }}
     >
       <h2 className="text-xs font-semibold uppercase tracking-wider mb-3 flex items-center gap-1.5" style={{ color: 'var(--color-text-muted)' }}>
@@ -114,7 +86,7 @@ export function IncidentSummary({ incidents, detailMode, onIncidentClick }: Inci
       <ul className={incidents.length > 1 ? 'space-y-2' : undefined}>
         {incidents.map((inc, i) => {
           const timing = incidentTiming(inc)
-          const severityStyle = severityBadgeStyle(inc.severity)
+          const severityTypeVal = severityType(inc.severity)
           const lastReportedAgo = ageText(inc.lastReportedAt)
           const isClickable = Boolean(onIncidentClick && inc.lat != null)
           const interactiveProps = isClickable ? {
@@ -132,18 +104,15 @@ export function IncidentSummary({ incidents, detailMode, onIncidentClick }: Inci
           return (
             <li
               key={inc.id ?? `${inc.type}-${inc.roadName}-${i}`}
-              className={`grid grid-cols-[4.75rem_1fr] gap-x-2 gap-y-1 rounded-md text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2${isClickable ? ' cursor-pointer hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.07]' : ''}`}
+              className={`grid grid-cols-[4.75rem_1fr] gap-x-2 gap-y-1 rounded-md text-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors${isClickable ? ' cursor-pointer hover:bg-black/[0.03] active:bg-black/[0.05] dark:hover:bg-white/[0.04] dark:active:bg-white/[0.07]' : ''}`}
               style={{ color: 'var(--color-text-secondary)', outlineColor: 'var(--color-focus)' }}
               {...interactiveProps}
             >
               <div className="col-start-1 row-span-2 min-w-0">
                 {hasKnownSeverity(inc.severity) ? (
-                  <span
-                    className="inline-flex max-w-full rounded-full px-1.5 py-0.5 text-[10px] font-semibold uppercase leading-none"
-                    style={severityStyle}
-                  >
+                  <StatusBadge type={severityTypeVal} size="sm">
                     {toDisplay(inc.severity)}
-                  </span>
+                  </StatusBadge>
                 ) : (
                   <span className="mt-1.5 block h-2 w-2 rounded-full" style={{ backgroundColor: 'var(--color-text-muted)' }} aria-hidden="true" />
                 )}
@@ -162,9 +131,9 @@ export function IncidentSummary({ incidents, detailMode, onIncidentClick }: Inci
                   <span className="font-medium" style={{ color: 'var(--color-text-secondary)' }}>{toDisplay(inc.description)}</span>
                 )}
                 {detailMode && inc.delaySeconds && inc.delaySeconds > 0 && (
-                  <span className="shrink-0 font-medium" style={{ color: 'var(--color-congestion-heavy)' }}>
-                    +{Math.round(inc.delaySeconds / 60)} min delay
-                  </span>
+                  <StatusBadge type="warning" size="sm">
+                    +{Math.round(inc.delaySeconds / 60)} min
+                  </StatusBadge>
                 )}
                 {detailMode && inc.lengthMeters && inc.lengthMeters >= 100 && (
                   <span className="shrink-0" style={{ color: 'var(--color-text-muted)' }}>
@@ -173,15 +142,9 @@ export function IncidentSummary({ incidents, detailMode, onIncidentClick }: Inci
                       : `${(inc.lengthMeters / 1000).toFixed(1)} km affected`}
                   </span>
                 )}
-                <span
-                  className="shrink-0 rounded-full px-1.5 py-0.5 font-semibold leading-none"
-                  style={{
-                    color: timing.color,
-                    backgroundColor: `color-mix(in srgb, ${timing.color} 12%, transparent)`,
-                  }}
-                >
+                <StatusBadge type={timing.type} size="sm">
                   {timing.label}
-                </span>
+                </StatusBadge>
                 {lastReportedAgo && (
                   <span className="shrink-0" style={{ color: 'var(--color-text-muted)' }}>Last report {lastReportedAgo}</span>
                 )}

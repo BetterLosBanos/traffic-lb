@@ -12,6 +12,7 @@ export type ApiStatus = 'ok' | 'error' | 'seeded'
 export type IncidentProbability = 'certain' | 'probable' | 'risk_of' | 'improbable'
 export type IncidentTimeValidity = 'present' | 'future'
 export type IncidentTmcDirection = 'positive' | 'negative'
+export type TrafficBaseline = 'usual' | 'freeFlow'
 
 // ─── Corridor Config (matches worker) ────────────────────────────
 
@@ -88,9 +89,12 @@ export interface CorridorDirection {
   durationSeconds: number
   noTrafficSeconds: number
   historicSeconds: number | null
-  delaySeconds: number
-  congestionRatio: number
-  congestionLevel: CongestionLevel
+  usualDelaySeconds: number
+  freeFlowDelaySeconds: number
+  usualRatio: number
+  freeFlowRatio: number
+  usualCongestionLevel: CongestionLevel
+  freeFlowCongestionLevel: CongestionLevel
   distanceMeters: number
   currentSpeedKph: number
   freeFlowSpeedKph: number
@@ -112,8 +116,11 @@ export interface LatestResponse {
 export interface DirectionHistoryData {
   avgDuration: number
   avgNoTraffic: number
-  avgRatio: number
-  avgDelay: number
+  avgHistoric: number | null
+  avgUsualDelaySeconds: number
+  avgFreeFlowDelaySeconds: number
+  avgUsualRatio: number
+  avgFreeFlowRatio: number
   avgCurrentSpeedKph: number
   avgFreeFlowSpeedKph: number
   sampleCount: number
@@ -127,8 +134,11 @@ export interface HistoryBucket {
 export interface DirectionSampleData {
   durationSeconds: number
   noTrafficSeconds: number
-  congestionRatio: number
-  delaySeconds: number
+  historicSeconds: number | null
+  usualDelaySeconds: number
+  freeFlowDelaySeconds: number
+  usualRatio: number
+  freeFlowRatio: number
   currentSpeedKph: number
   freeFlowSpeedKph: number
 }
@@ -154,12 +164,12 @@ export interface HeatmapBucket {
   dow: number             // 0=Sun, 1=Mon, ..., 6=Sat (Manila local)
   hr: number              // 0–23 (Manila local)
   sampleCount: number
-  avgDelayUsual: number
-  avgDelayBest: number
-  p50DelayUsual: number | null
-  p50DelayBest: number | null
-  p90DelayUsual: number | null
-  p90DelayBest: number | null
+  avgUsualDelaySeconds: number
+  avgFreeFlowDelaySeconds: number
+  p50UsualDelaySeconds: number | null
+  p50FreeFlowDelaySeconds: number | null
+  p90UsualDelaySeconds: number | null
+  p90FreeFlowDelaySeconds: number | null
   incidentCount: number
 }
 

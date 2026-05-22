@@ -1,21 +1,22 @@
 import { useState, useEffect, useCallback } from 'react'
-import { Car, RefreshCw } from 'lucide-react'
+import { Car, RefreshCw, Calendar, TrendingUp } from 'lucide-react'
 import { TrafficCard } from './components/TrafficCard'
 import { TrendChart } from './components/TrendChart'
 import { RouteMap } from './components/RouteMap'
 import { IncidentSummary } from './components/IncidentSummary'
 import { ThemeToggle } from './components/ThemeToggle'
 import { HeatmapChart } from './components/HeatmapChart'
+import { StatusBadge } from './components/StatusBadge'
 import { fetchLatest, fetchHistory, fetchSamples, fetchHeatmap } from './lib/api'
 import { CORRIDORS } from './lib/types'
 import { ageText } from './lib/time'
-import type { LatestResponse, HistoryBucket, Incident, TrafficSamplePoint, CorridorDirection, HeatmapBucket } from './lib/types'
+import type { LatestResponse, HistoryBucket, Incident, TrafficSamplePoint, CorridorDirection, HeatmapBucket, TrafficBaseline } from './lib/types'
 
 type TrendRange = '3h' | '12h' | '24h'
 
 // ─── Dynamic hero summary ───────────────────────────────────────
 
-function heroSummary(corridors: Record<string, CorridorDirection>, baseline: 'historic' | 'ideal'): string {
+function heroSummary(corridors: Record<string, CorridorDirection>, baseline: TrafficBaseline): string {
   const all = Object.values(corridors) as CorridorDirection[]
   if (all.length === 0) return 'No live traffic data yet'
 
@@ -27,9 +28,12 @@ function heroSummary(corridors: Record<string, CorridorDirection>, baseline: 'hi
   // Calculate delay based on baseline
   const withDelay = active.map(d => ({
     ...d,
-    delayVsBaseline: baseline === 'historic'
-      ? d.delaySeconds
-      : d.durationSeconds - d.noTrafficSeconds
+    delayVsBaseline: baseline === 'usual'
+      ? d.usualDelaySeconds
+      : d.freeFlowDelaySeconds,
+    severity: baseline === 'usual'
+      ? d.usualCongestionLevel
+      : d.freeFlowCongestionLevel,
   }))
 
   const worst = withDelay.sort((a, b) => b.delayVsBaseline - a.delayVsBaseline)[0]
@@ -39,9 +43,9 @@ function heroSummary(corridors: Record<string, CorridorDirection>, baseline: 'hi
   const delayMin = Math.round(worst.delayVsBaseline / 60)
   const dirLabel = corridorLabel(worst.direction)
 
-  if (delayMin <= 0 || worst.congestionLevel === 'light') return 'Roads moving well'
-  if (worst.congestionLevel === 'moderate') return `+${delayMin} min delay ${dirLabel}`
-  if (worst.congestionLevel === 'heavy') return `Heavy delay ${dirLabel}`
+  if (delayMin <= 0 || worst.severity === 'light') return 'Roads moving well'
+  if (worst.severity === 'moderate') return `+${delayMin} min delay ${dirLabel}`
+  if (worst.severity === 'heavy') return `Heavy delay ${dirLabel}`
   return `Severe delay ${dirLabel}`
 }
 
@@ -66,7 +70,7 @@ export default function App() {
   const [flyTo, setFlyTo] = useState<{ lat: number; lng: number } | null>(null)
   const [heatmap, setHeatmap] = useState<HeatmapBucket[]>([])
   const [detailMode, setDetailMode] = useState(false)
-  const [baseline, setBaseline] = useState<'historic' | 'ideal'>('historic')
+  const [baseline, setBaseline] = useState<TrafficBaseline>('usual')
   const [trendExpanded, setTrendExpanded] = useState(false)
   const [heatmapExpanded, setHeatmapExpanded] = useState(false)
 
@@ -81,7 +85,7 @@ export default function App() {
       const [latest, hist, heat] = await Promise.all([
         fetchLatest(),
         trendRequest,
-        fetchHeatmap(2),  // 2 days default, will grow over time
+        fetchHeatmap(14),
       ])
       setData(latest)
       if (trendRange === '3h') {
@@ -140,37 +144,41 @@ export default function App() {
     <div className="min-h-screen textured" style={{ backgroundColor: 'var(--color-surface)' }}>
       {/* Top bar */}
       <header className="sticky top-0 z-40 backdrop-blur-md border-b" style={{ backgroundColor: 'color-mix(in srgb, var(--color-surface) 85%, transparent)', borderColor: 'var(--color-border)' }}>
-        <div className="max-w-5xl mx-auto px-4 h-12 flex items-center justify-between">
-          <span className="text-sm font-semibold tracking-tight flex items-center gap-1.5" style={{ color: 'var(--color-text-secondary)' }}>
-            <Car size={16} strokeWidth={2} />
-            Traffic Ba Sa LB?
+        <div className="max-w-5xl mx-auto px-4 h-14 flex items-center justify-between">
+          <span className="text-sm font-semibold tracking-tight flex items-center gap-2" style={{ color: 'var(--color-text-primary)' }}>
+            <Car size={18} strokeWidth={2.5} style={{ color: 'var(--color-congestion-light)' }} />
+            <span>Traffic Ba Sa LB?</span>
           </span>
           <div className="flex items-center gap-2">
             <button
-              onClick={() => setBaseline(baseline === 'historic' ? 'ideal' : 'historic')}
-              className="text-xs font-medium rounded-md px-3 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              onClick={() => setBaseline(baseline === 'usual' ? 'freeFlow' : 'usual')}
+              className="text-xs font-medium rounded-md px-3 py-2 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
               style={{
-                backgroundColor: 'var(--color-surface-overlay)',
+                backgroundColor: baseline === 'freeFlow' ? 'var(--color-surface-overlay)' : 'transparent',
                 color: 'var(--color-text-secondary)',
                 border: '1px solid var(--color-border)',
-                outlineColor: 'var(--color-focus)',
-              }}
-              aria-pressed={baseline === 'ideal'}
+                '--tw-ring-color': 'var(--color-focus)',
+                '--tw-ring-offset-color': 'var(--color-surface)',
+              } as React.CSSProperties}
+              aria-pressed={baseline === 'freeFlow'}
             >
-              Compare: {baseline === 'historic' ? 'Usual ▾' : 'Best time ▾'}
+              <Calendar size={12} aria-hidden="true" />
+              {baseline === 'usual' ? 'Usual' : 'Best time'}
             </button>
             <button
               onClick={() => setDetailMode(!detailMode)}
-              className="text-xs font-medium rounded-md px-3 py-1.5 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
+              className="text-xs font-medium rounded-md px-3 py-2 flex items-center gap-1.5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
               style={{
                 backgroundColor: detailMode ? 'var(--color-surface-overlay)' : 'transparent',
                 color: 'var(--color-text-secondary)',
                 border: '1px solid var(--color-border)',
-                outlineColor: 'var(--color-focus)',
-              }}
+                '--tw-ring-color': 'var(--color-focus)',
+                '--tw-ring-offset-color': 'var(--color-surface)',
+              } as React.CSSProperties}
               aria-pressed={detailMode}
             >
-              {detailMode ? 'Detailed ▾' : 'Simple ☰'}
+              <TrendingUp size={12} aria-hidden="true" />
+              {detailMode ? 'Detailed' : 'Simple'}
             </button>
             <ThemeToggle />
           </div>
@@ -250,21 +258,22 @@ export default function App() {
             </div>
 
             {/* 2. Compact trust strip */}
-            <div className="flex items-center justify-center gap-3 text-xs mb-8" style={{ color: 'var(--color-text-muted)' }}>
-              <span className="flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full" style={{ backgroundColor: isStale ? 'var(--color-congestion-heavy)' : 'var(--color-congestion-light)' }} aria-hidden="true" />
-                {isStale ? 'Stale data' : 'Fresh'}
-              </span>
-              <span aria-hidden="true">·</span>
-              <span>Updated {ageText(data!.lastUpdated)}</span>
-              <span aria-hidden="true">·</span>
+            <div className="flex items-center justify-center gap-3 text-xs mb-8">
+              <StatusBadge type={isStale ? 'warning' : 'success'} size="sm">
+                {isStale ? 'Stale' : 'Fresh'}
+              </StatusBadge>
+              <span style={{ color: 'var(--color-text-muted)' }}>Updated {ageText(data!.lastUpdated)}</span>
               <button
                 onClick={() => load()}
                 disabled={refreshing}
-                className="flex items-center gap-1 min-h-6 px-1.5 underline underline-offset-2 disabled:opacity-70 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2"
-                style={{ color: 'var(--color-text-secondary)', outlineColor: 'var(--color-focus)' }}
+                className="flex items-center gap-1.5 min-h-7 px-2 rounded-md font-medium transition-colors disabled:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 hover:bg-black/[0.04] dark:hover:bg-white/[0.06]"
+                style={{
+                  color: 'var(--color-text-secondary)',
+                  '--tw-ring-color': 'var(--color-focus)',
+                  '--tw-ring-offset-color': 'var(--color-surface)',
+                } as React.CSSProperties}
               >
-                <RefreshCw size={10} className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
+                <RefreshCw size={11} className={refreshing ? 'animate-spin' : ''} aria-hidden="true" />
                 Refresh
               </button>
             </div>

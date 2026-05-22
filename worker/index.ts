@@ -1,7 +1,8 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { toCorridorDirection, toISO } from './traffic-contract'
+import type { LatestSampleRow } from './traffic-contract'
 import type {
-  CongestionLevel,
   Incident,
   IncidentProbability,
   IncidentSeverity,
@@ -18,6 +19,7 @@ import type {
 interface Env {
   DB: D1Database
   TOMTOM_API_KEY: string
+  ARCHIVE: R2Bucket
 }
 
 interface RouteResult {
@@ -43,30 +45,16 @@ interface HealthRow {
   last_error_message: string | null
 }
 
-interface LatestSampleRow {
-  id: number
-  direction: string
-  duration_seconds: number
-  no_traffic_seconds: number
-  historic_seconds: number | null
-  delay_seconds: number
-  congestion_ratio: number
-  distance_meters: number
-  current_speed_kph: number
-  free_flow_speed_kph: number
-  route_polyline: string | null
-  incidents: string | null
-  api_status: string
-  created_at: string
-}
-
 interface HistoryRow {
   direction: string
   hour: string
   avg_duration: number
   avg_no_traffic: number
-  avg_historic: number
-  avg_delay: number
+  avg_historic: number | null
+  avg_usual_delay: number
+  avg_free_flow_delay: number
+  avg_usual_ratio: number
+  avg_free_flow_ratio: number
   avg_current_speed_kph: number
   avg_free_flow_speed_kph: number
   sample_count: number
@@ -77,8 +65,7 @@ interface SampleRow {
   time: string
   duration_seconds: number
   no_traffic_seconds: number
-  historic_seconds: number
-  delay_seconds: number
+  historic_seconds: number | null
   current_speed_kph: number
   free_flow_speed_kph: number
 }
@@ -89,11 +76,11 @@ interface HeatmapRow {
   hr: number
   sample_count: number
   avg_delay_usual: number
-  avg_delay_best: number
+  avg_delay_free_flow: number
   p50_delay_usual: number | null
-  p50_delay_best: number | null
+  p50_delay_free_flow: number | null
   p90_delay_usual: number | null
-  p90_delay_best: number | null
+  p90_delay_free_flow: number | null
   incident_count: number
 }
 
@@ -154,26 +141,6 @@ const INCIDENTS_BBOX = (() => {
   const pad = 0.003
   return `${Math.min(...lngs) - pad},${Math.min(...lats) - pad},${Math.max(...lngs) + pad},${Math.max(...lats) + pad}`
 })()
-
-// How old before data is considered stale (ms) — 30 minutes
-const STALE_THRESHOLD_MS = 30 * 60 * 1000
-
-function getCongestionLevel(ratio: number): CongestionLevel {
-  if (ratio < 1.25) return 'light'
-  if (ratio < 1.75) return 'moderate'
-  if (ratio < 2.5) return 'heavy'
-  return 'severe'
-}
-
-// D1's datetime('now') returns UTC as 'YYYY-MM-DD HH:MM:SS' (no T, no Z).
-// Normalize to proper ISO 8601 UTC for the frontend.
-function toISO(raw: string | null): string | null {
-  if (!raw) return null
-  // Already ISO? Return as-is.
-  if (raw.includes('T') && raw.endsWith('Z')) return raw
-  // D1 format: space separator, no Z. Also handles strftime output like '2025-05-18T07:00:00'.
-  return raw.replace(' ', 'T') + 'Z'
-}
 
 function isLocalRequest(url: string): boolean {
   const { hostname } = new URL(url)
@@ -351,13 +318,73 @@ async function fetchIncidents(env: Env): Promise<Incident[]> {
 
 // ─── Cron: Collect Traffic Data ──────────────────────────────────
 
-const RETENTION_DAYS = 14
+const RETENTION_DAYS = 90
+const ARCHIVE_RETENTION_DAYS = 365
 
-async function collectTraffic(env: Env): Promise<void> {
-  // Purge stale data before collecting new samples
+async function archiveExpired(env: Env): Promise<void> {
+  const cutoff = `-${RETENTION_DAYS} days`
+
+  // Fetch rows about to expire, grouped by UTC date
+  const { results } = await env.DB.prepare(
+    `SELECT * FROM traffic_samples WHERE created_at < datetime('now', ?) ORDER BY created_at`,
+  ).bind(cutoff).all() as { results: Record<string, unknown>[] }
+
+  if (results.length === 0) return
+
+  // Group by date for daily JSON files
+  const byDate = new Map<string, Record<string, unknown>[]>()
+  for (const row of results) {
+    const date = String(row.created_at).slice(0, 10)
+    if (!byDate.has(date)) byDate.set(date, [])
+    byDate.get(date)!.push(row)
+  }
+
+  // Write each day to R2
+  for (const [date, rows] of byDate) {
+    const key = `archive/${date}.json`
+    const existing = await env.ARCHIVE.get(key)
+    let merged: Record<string, unknown>[]
+    if (existing) {
+      const prev = await existing.json<Record<string, unknown>[]>()
+      merged = [...prev, ...rows]
+    } else {
+      merged = rows
+    }
+    await env.ARCHIVE.put(key, JSON.stringify(merged))
+  }
+
+  // Delete expired rows from D1
   await env.DB.prepare(
     `DELETE FROM traffic_samples WHERE created_at < datetime('now', ?)`,
-  ).bind(`-${RETENTION_DAYS} days`).run()
+  ).bind(cutoff).run()
+
+  // Purge R2 objects older than archive retention
+  const purgeBefore = Date.now() - ARCHIVE_RETENTION_DAYS * 86400000
+  let cursor: string | undefined
+  do {
+    const listed = await env.ARCHIVE.list({ prefix: 'archive/', cursor })
+    for (const obj of listed.objects) {
+      const objDate = obj.key.replace('archive/', '').replace('.json', '')
+      const objTime = new Date(objDate + 'T00:00:00Z').getTime()
+      if (objTime < purgeBefore) {
+        await env.ARCHIVE.delete(obj.key)
+      }
+    }
+    cursor = listed.truncated ? listed.cursor : undefined
+  } while (cursor)
+}
+
+async function collectTraffic(env: Env): Promise<void> {
+  // Archive expired data to R2, then delete from D1
+  try {
+    await archiveExpired(env)
+  } catch (error) {
+    console.error('[collectTraffic] archive failed:', error)
+    // Fallback: hard delete to prevent unbounded growth
+    await env.DB.prepare(
+      `DELETE FROM traffic_samples WHERE created_at < datetime('now', ?)`,
+    ).bind(`-${RETENTION_DAYS} days`).run()
+  }
 
   let incidents: Incident[] = []
   try {
@@ -451,32 +478,6 @@ app.get('/api/health', async (c) => {
   })
 })
 
-// Normalize incident fields from DB — handles old snake_case and current camelCase
-function normalizeIncident(raw: Record<string, unknown>): Incident {
-  return {
-    id: (raw.id ?? raw.incidentId) as string,
-    type: raw.type as string,
-    severity: raw.severity as string,
-    description: raw.description as string,
-    events: raw.events as Incident['events'],
-    roadName: raw.roadName as string,
-    from: raw.from as string,
-    to: raw.to as string,
-    delaySeconds: (raw.delaySeconds ?? raw.delay_seconds) as number | undefined,
-    lengthMeters: (raw.lengthMeters ?? raw.length_meters) as number | undefined,
-    startedAt: (raw.startedAt ?? raw.started_at) as string | undefined,
-    endsAt: (raw.endsAt ?? raw.ends_at) as string | undefined,
-    lastReportedAt: (raw.lastReportedAt ?? raw.last_reported_at) as string | undefined,
-    timeValidity: (raw.timeValidity ?? raw.time_validity) as IncidentTimeValidity | undefined,
-    probability: raw.probability as IncidentProbability | undefined,
-    reportCount: (raw.reportCount ?? raw.report_count) as number | undefined,
-    hasExpiredEndTime: (raw.hasExpiredEndTime ?? raw.has_expired_end_time) as boolean | undefined,
-    lat: raw.lat as number | undefined,
-    lng: raw.lng as number | undefined,
-    tmc: raw.tmc as Incident['tmc'],
-  }
-}
-
 // Latest traffic data for all corridors
 app.get('/api/traffic/latest', async (c) => {
   // Get latest sample per direction
@@ -492,52 +493,11 @@ app.get('/api/traffic/latest', async (c) => {
     return c.json({ status: 'no_data', corridors: {}, lastUpdated: null })
   }
 
-  const corridors: Record<string, {
-    direction: string
-    durationSeconds: number
-    noTrafficSeconds: number
-    historicSeconds: number | null
-    delaySeconds: number
-    congestionRatio: number
-    congestionLevel: CongestionLevel
-    distanceMeters: number
-    currentSpeedKph: number
-    freeFlowSpeedKph: number
-    routePolyline: string | null
-    incidents: Incident[]
-    apiStatus: string
-    collectedAt: string
-    isStale: boolean
-  }> = {}
+  const corridors: Record<string, ReturnType<typeof toCorridorDirection>> = {}
 
   for (const rawRow of results) {
     const row = rawRow as unknown as LatestSampleRow
-    const dirKey = row.direction
-    const historicRatio = row.historic_seconds > 0 ? row.duration_seconds / row.historic_seconds : 1
-    const level = getCongestionLevel(historicRatio)
-    const rawIncidents: Record<string, unknown>[] = row.incidents ? JSON.parse(row.incidents) : []
-    // Translate incident fields from DB (may be old snake_case or current camelCase)
-    const parsedIncidents: Incident[] = rawIncidents.map(normalizeIncident)
-    const ageMs = Date.now() - new Date(row.created_at + 'Z').getTime()
-    const isStale = ageMs > STALE_THRESHOLD_MS
-
-    corridors[dirKey] = {
-      direction: dirKey,
-      durationSeconds: row.duration_seconds,
-      noTrafficSeconds: row.no_traffic_seconds,
-      historicSeconds: row.historic_seconds,
-      delaySeconds: row.delay_seconds,
-      congestionRatio: Math.round(historicRatio * 100) / 100,
-      congestionLevel: level,
-      distanceMeters: row.distance_meters,
-      currentSpeedKph: Math.round(row.current_speed_kph * 10) / 10,
-      freeFlowSpeedKph: Math.round(row.free_flow_speed_kph * 10) / 10,
-      routePolyline: row.route_polyline ?? null,
-      incidents: parsedIncidents,
-      apiStatus: row.api_status,
-      collectedAt: toISO(row.created_at) ?? '',
-      isStale: isStale,
-    }
+    corridors[row.direction] = toCorridorDirection(row)
   }
 
   const lastUpdated = (results as unknown as LatestSampleRow[])
@@ -564,7 +524,10 @@ app.get('/api/traffic/history', async (c) => {
       AVG(duration_seconds) as avg_duration,
       AVG(no_traffic_seconds) as avg_no_traffic,
       AVG(historic_seconds) as avg_historic,
-      AVG(delay_seconds) as avg_delay,
+      AVG(duration_seconds - COALESCE(historic_seconds, no_traffic_seconds)) as avg_usual_delay,
+      AVG(duration_seconds - no_traffic_seconds) as avg_free_flow_delay,
+      AVG(duration_seconds * 1.0 / COALESCE(NULLIF(historic_seconds, 0), NULLIF(no_traffic_seconds, 0))) as avg_usual_ratio,
+      AVG(duration_seconds * 1.0 / NULLIF(no_traffic_seconds, 0)) as avg_free_flow_ratio,
       AVG(current_speed_kph) as avg_current_speed_kph,
       AVG(free_flow_speed_kph) as avg_free_flow_speed_kph,
       COUNT(*) as sample_count
@@ -586,8 +549,11 @@ app.get('/api/traffic/history', async (c) => {
     buckets[h][row.direction] = {
       avgDuration: Math.round(row.avg_duration),
       avgNoTraffic: Math.round(row.avg_no_traffic),
-      avgRatio: row.avg_historic > 0 ? Math.round((row.avg_duration / row.avg_historic) * 100) / 100 : 1,
-      avgDelay: Math.round(row.avg_duration - row.avg_historic),
+      avgHistoric: row.avg_historic != null ? Math.round(row.avg_historic) : null,
+      avgUsualDelaySeconds: Math.round(row.avg_usual_delay),
+      avgFreeFlowDelaySeconds: Math.round(row.avg_free_flow_delay),
+      avgUsualRatio: Math.round(row.avg_usual_ratio * 100) / 100,
+      avgFreeFlowRatio: Math.round(row.avg_free_flow_ratio * 100) / 100,
       avgCurrentSpeedKph: Math.round(row.avg_current_speed_kph * 10) / 10,
       avgFreeFlowSpeedKph: Math.round(row.avg_free_flow_speed_kph * 10) / 10,
       sampleCount: row.sample_count,
@@ -608,7 +574,6 @@ app.get('/api/traffic/samples', async (c) => {
       duration_seconds,
       no_traffic_seconds,
       historic_seconds,
-      delay_seconds,
       current_speed_kph,
       free_flow_speed_kph
     FROM traffic_samples
@@ -627,8 +592,13 @@ app.get('/api/traffic/samples', async (c) => {
     buckets[time][row.direction] = {
       durationSeconds: row.duration_seconds,
       noTrafficSeconds: row.no_traffic_seconds,
-      congestionRatio: row.historic_seconds > 0 ? Math.round((row.duration_seconds / row.historic_seconds) * 100) / 100 : 1,
-      delaySeconds: row.historic_seconds > 0 ? Math.round(row.duration_seconds - row.historic_seconds) : 0,
+      historicSeconds: row.historic_seconds,
+      usualDelaySeconds: Math.round(row.duration_seconds - (row.historic_seconds ?? row.no_traffic_seconds)),
+      freeFlowDelaySeconds: Math.round(row.duration_seconds - row.no_traffic_seconds),
+      usualRatio: row.historic_seconds != null && row.historic_seconds > 0
+        ? Math.round((row.duration_seconds / row.historic_seconds) * 100) / 100
+        : Math.round((row.duration_seconds / row.no_traffic_seconds) * 100) / 100,
+      freeFlowRatio: row.no_traffic_seconds > 0 ? Math.round((row.duration_seconds / row.no_traffic_seconds) * 100) / 100 : 1,
       currentSpeedKph: Math.round(row.current_speed_kph * 10) / 10,
       freeFlowSpeedKph: Math.round(row.free_flow_speed_kph * 10) / 10,
     }
@@ -665,20 +635,20 @@ app.get('/api/traffic/heatmap', async (c) => {
       direction, dow, hr,
       COUNT(*) as sample_count,
       AVG(duration_seconds - COALESCE(historic_seconds, no_traffic_seconds)) as avg_delay_usual,
-      AVG(duration_seconds - no_traffic_seconds) as avg_delay_best,
+      AVG(duration_seconds - no_traffic_seconds) as avg_delay_free_flow,
       SUM(had_incident) as incident_count,
       MAX(CASE
         WHEN rn = CAST((cnt * 50 + 99) / 100 AS INTEGER) THEN duration_seconds - COALESCE(historic_seconds, no_traffic_seconds)
       END) as p50_delay_usual,
       MAX(CASE
         WHEN rn = CAST((cnt * 50 + 99) / 100 AS INTEGER) THEN duration_seconds - no_traffic_seconds
-      END) as p50_delay_best,
+      END) as p50_delay_free_flow,
       MAX(CASE
         WHEN rn = CAST((cnt * 90 + 99) / 100 AS INTEGER) THEN duration_seconds - COALESCE(historic_seconds, no_traffic_seconds)
       END) as p90_delay_usual,
       MAX(CASE
         WHEN rn = CAST((cnt * 90 + 99) / 100 AS INTEGER) THEN duration_seconds - no_traffic_seconds
-      END) as p90_delay_best
+      END) as p90_delay_free_flow
     FROM ranked
     GROUP BY direction, dow, hr
     ORDER BY direction, dow, hr
@@ -689,12 +659,12 @@ app.get('/api/traffic/heatmap', async (c) => {
     dow: row.dow,
     hr: row.hr,
     sampleCount: row.sample_count,
-    avgDelayUsual: row.avg_delay_usual,
-    avgDelayBest: row.avg_delay_best,
-    p50DelayUsual: row.p50_delay_usual,
-    p50DelayBest: row.p50_delay_best,
-    p90DelayUsual: row.p90_delay_usual,
-    p90DelayBest: row.p90_delay_best,
+    avgUsualDelaySeconds: row.avg_delay_usual,
+    avgFreeFlowDelaySeconds: row.avg_delay_free_flow,
+    p50UsualDelaySeconds: row.p50_delay_usual,
+    p50FreeFlowDelaySeconds: row.p50_delay_free_flow,
+    p90UsualDelaySeconds: row.p90_delay_usual,
+    p90FreeFlowDelaySeconds: row.p90_delay_free_flow,
     incidentCount: row.incident_count,
   }))
 
@@ -712,8 +682,6 @@ app.post('/api/traffic/seed', async (c) => {
     durationSeconds: number
     noTrafficSeconds: number
     historicSeconds?: number
-    delaySeconds: number
-    congestionRatio: number
     distanceMeters?: number
     incidents?: Incident[]
   }>()
@@ -721,6 +689,11 @@ app.post('/api/traffic/seed', async (c) => {
   if (!body.direction) {
     return c.json({ error: 'direction is required' }, 400)
   }
+  const baselineSeconds = body.historicSeconds ?? body.noTrafficSeconds
+  const storedDelaySeconds = body.durationSeconds - baselineSeconds
+  const storedCongestionRatio = baselineSeconds > 0
+    ? Math.round((body.durationSeconds / baselineSeconds) * 100) / 100
+    : 1
 
   await c.env.DB.prepare(`
     INSERT INTO traffic_samples (
@@ -733,8 +706,8 @@ app.post('/api/traffic/seed', async (c) => {
     body.durationSeconds,
     body.noTrafficSeconds,
     body.historicSeconds ?? null,
-    body.delaySeconds,
-    body.congestionRatio,
+    storedDelaySeconds,
+    storedCongestionRatio,
     body.distanceMeters ?? 0,
     JSON.stringify(body.incidents ?? []),
   ).run()

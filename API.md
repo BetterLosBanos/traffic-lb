@@ -23,9 +23,12 @@ Normalized route fields:
 | `durationSeconds` | `summary.travelTimeInSeconds` | Travel time with traffic |
 | `noTrafficSeconds` | `summary.noTrafficTravelTimeInSeconds` | Free-flow travel time |
 | `historicSeconds` | `summary.historicTrafficTravelTimeInSeconds` | Historic average, when present |
-| `delaySeconds` | Derived | `durationSeconds - historicSeconds` (delay vs normal) |
-| `congestionRatio` | Derived | `durationSeconds / historicSeconds` (ratio vs normal) |
-| `congestionLevel` | Derived | `light`, `moderate`, `heavy`, or `severe` |
+| `usualDelaySeconds` | Derived | `durationSeconds - historicSeconds`, falling back to free-flow when historic is unavailable |
+| `freeFlowDelaySeconds` | Derived | `durationSeconds - noTrafficSeconds` |
+| `usualRatio` | Derived | `durationSeconds / historicSeconds`, falling back to free-flow when historic is unavailable |
+| `freeFlowRatio` | Derived | `durationSeconds / noTrafficSeconds` |
+| `usualCongestionLevel` | Derived | `light`, `moderate`, `heavy`, or `severe` from `usualRatio` |
+| `freeFlowCongestionLevel` | Derived | `light`, `moderate`, `heavy`, or `severe` from `freeFlowRatio` |
 | `distanceMeters` | `summary.lengthInMeters` | Route distance |
 | `trafficDelaySeconds` | `summary.trafficDelayInSeconds` | TomTom's traffic delay value, stored internally |
 | `currentSpeedKph` | Derived | Distance divided by traffic duration |
@@ -142,9 +145,12 @@ direction.
       "durationSeconds": 480,
       "noTrafficSeconds": 360,
       "historicSeconds": 400,
-      "delaySeconds": 120,
-      "congestionRatio": 1.33,
-      "congestionLevel": "moderate",
+      "usualDelaySeconds": 80,
+      "freeFlowDelaySeconds": 120,
+      "usualRatio": 1.2,
+      "freeFlowRatio": 1.33,
+      "usualCongestionLevel": "light",
+      "freeFlowCongestionLevel": "moderate",
       "distanceMeters": 5200,
       "currentSpeedKph": 39.0,
       "freeFlowSpeedKph": 52.0,
@@ -174,9 +180,12 @@ Direction object fields:
 | `durationSeconds` | `number` | Travel time with traffic |
 | `noTrafficSeconds` | `number` | Free-flow travel time |
 | `historicSeconds` | `number\|null` | Historic average, when present |
-| `delaySeconds` | `number` | Route delay |
-| `congestionRatio` | `number` | Traffic duration divided by free-flow duration |
-| `congestionLevel` | `string` | Derived congestion level |
+| `usualDelaySeconds` | `number` | Delay versus usual conditions |
+| `freeFlowDelaySeconds` | `number` | Delay versus free-flow conditions |
+| `usualRatio` | `number` | Travel time multiplier versus usual conditions |
+| `freeFlowRatio` | `number` | Travel time multiplier versus free-flow conditions |
+| `usualCongestionLevel` | `string` | Congestion severity from `usualRatio` |
+| `freeFlowCongestionLevel` | `string` | Congestion severity from `freeFlowRatio` |
 | `distanceMeters` | `number` | Route distance |
 | `currentSpeedKph` | `number` | Derived current speed |
 | `freeFlowSpeedKph` | `number` | Derived free-flow speed |
@@ -205,8 +214,11 @@ Query params:
     "pansol_f": {
       "avgDuration": 450,
       "avgNoTraffic": 360,
-      "avgRatio": 1.25,
-      "avgDelay": 90,
+      "avgHistoric": 400,
+      "avgUsualDelaySeconds": 50,
+      "avgFreeFlowDelaySeconds": 90,
+      "avgUsualRatio": 1.13,
+      "avgFreeFlowRatio": 1.25,
       "avgCurrentSpeedKph": 41.6,
       "avgFreeFlowSpeedKph": 52.0,
       "sampleCount": 6
@@ -234,8 +246,11 @@ Query params:
     "pansol_f": {
       "durationSeconds": 480,
       "noTrafficSeconds": 360,
-      "congestionRatio": 1.33,
-      "delaySeconds": 120,
+      "historicSeconds": 400,
+      "usualDelaySeconds": 80,
+      "freeFlowDelaySeconds": 120,
+      "usualRatio": 1.2,
+      "freeFlowRatio": 1.33,
       "currentSpeedKph": 39.0,
       "freeFlowSpeedKph": 52.0
     }
@@ -263,9 +278,12 @@ Query params:
       "dow": 1,
       "hr": 17,
       "sampleCount": 12,
-      "avgDelay": 180,
-      "p50Delay": 120,
-      "p90Delay": 420,
+      "avgUsualDelaySeconds": 180,
+      "avgFreeFlowDelaySeconds": 240,
+      "p50UsualDelaySeconds": 120,
+      "p50FreeFlowDelaySeconds": 180,
+      "p90UsualDelaySeconds": 420,
+      "p90FreeFlowDelaySeconds": 480,
       "incidentCount": 3
     }
   ]
@@ -278,9 +296,12 @@ Query params:
 | `dow` | `number` | Manila-local day of week, `0=Sun` ... `6=Sat` |
 | `hr` | `number` | Manila-local hour, `0-23` |
 | `sampleCount` | `number` | Samples in the bucket |
-| `avgDelay` | `number` | Average delay in seconds |
-| `p50Delay` | `number\|null` | Nearest-rank median delay in seconds |
-| `p90Delay` | `number\|null` | Nearest-rank P90 delay in seconds |
+| `avgUsualDelaySeconds` | `number` | Average delay versus usual conditions |
+| `avgFreeFlowDelaySeconds` | `number` | Average delay versus free-flow conditions |
+| `p50UsualDelaySeconds` | `number\|null` | Nearest-rank median delay versus usual conditions |
+| `p50FreeFlowDelaySeconds` | `number\|null` | Nearest-rank median delay versus free-flow conditions |
+| `p90UsualDelaySeconds` | `number\|null` | Nearest-rank P90 delay versus usual conditions |
+| `p90FreeFlowDelaySeconds` | `number\|null` | Nearest-rank P90 delay versus free-flow conditions |
 | `incidentCount` | `number` | Number of samples in the bucket with at least one incident |
 
 ---
@@ -330,8 +351,8 @@ One row per direction per collection tick.
 | `duration_seconds` | Travel time with traffic |
 | `no_traffic_seconds` | Free-flow travel time |
 | `historic_seconds` | Historic travel time |
-| `delay_seconds` | Route delay |
-| `congestion_ratio` | Route multiplier |
+| `delay_seconds` | Legacy stored route delay; Worker responses expose baseline-specific delay fields |
+| `congestion_ratio` | Legacy stored route multiplier; Worker responses expose baseline-specific ratio fields |
 | `distance_meters` | Route distance |
 | `traffic_delay_seconds` | TomTom route traffic delay |
 | `current_speed_kph` | Derived current speed |

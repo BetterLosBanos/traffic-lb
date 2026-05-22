@@ -1,12 +1,12 @@
 import { useState, useMemo } from 'react'
 import { Calendar } from 'lucide-react'
-import { CORRIDORS, type HeatmapBucket } from '../lib/types'
+import { CORRIDORS, type HeatmapBucket, type TrafficBaseline } from '../lib/types'
 
 interface HeatmapChartProps {
   data: HeatmapBucket[]
   expanded: boolean
   onToggle: () => void
-  baseline: 'historic' | 'ideal'
+  baseline: TrafficBaseline
 }
 
 const DOW_LABELS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']
@@ -20,7 +20,7 @@ const HOUR_LABELS = Array.from({ length: 12 }, (_, i) => {
 })
 
 // Type-safe delay field accessor
-function getDelayField(bucket: HeatmapBucket, field: 'p50DelayUsual' | 'p50DelayBest' | 'p90DelayUsual' | 'p90DelayBest' | 'avgDelayUsual' | 'avgDelayBest'): number | null {
+function getDelayField(bucket: HeatmapBucket, field: 'p50UsualDelaySeconds' | 'p50FreeFlowDelaySeconds' | 'p90UsualDelaySeconds' | 'p90FreeFlowDelaySeconds' | 'avgUsualDelaySeconds' | 'avgFreeFlowDelaySeconds'): number | null {
   return bucket[field]
 }
 
@@ -32,27 +32,23 @@ function displayToSqlDow(displayDow: number): number {
 
 // Continuous color scale: 0s → 300s+ maps to congestion colors
 function delayToColor(p90Seconds: number | null): string {
-  if (p90Seconds === null || p90Seconds === 0) {
+  if (p90Seconds === null) {
     return 'var(--color-surface-subtle)'
   }
   // Normalize 0-300s to 0-1 range
   const normalized = Math.min(p90Seconds / 300, 1)
 
-  // Color stops at 0, 0.25, 0.5, 0.75, 1
+  // Color stops: 0=light, 0.25=moderate, 0.5=heavy, 0.75+=severe
   if (normalized < 0.25) {
-    // Light to moderate
     const t = normalized / 0.25
-    return `color-mix(in srgb, var(--color-congestion-light) ${t * 100}%, var(--color-congestion-moderate) ${(1 - t) * 100}%)`
+    return `color-mix(in srgb, var(--color-congestion-light) ${(1 - t) * 100}%, var(--color-congestion-moderate) ${t * 100}%)`
   } else if (normalized < 0.5) {
-    // Moderate to heavy
     const t = (normalized - 0.25) / 0.25
-    return `color-mix(in srgb, var(--color-congestion-moderate) ${t * 100}%, var(--color-congestion-heavy) ${(1 - t) * 100}%)`
+    return `color-mix(in srgb, var(--color-congestion-moderate) ${(1 - t) * 100}%, var(--color-congestion-heavy) ${t * 100}%)`
   } else if (normalized < 0.75) {
-    // Heavy to severe
     const t = (normalized - 0.5) / 0.25
-    return `color-mix(in srgb, var(--color-congestion-heavy) ${t * 100}%, var(--color-congestion-severe) ${(1 - t) * 100}%)`
+    return `color-mix(in srgb, var(--color-congestion-heavy) ${(1 - t) * 100}%, var(--color-congestion-severe) ${t * 100}%)`
   } else {
-    // Beyond severe, stay at severe
     return 'var(--color-congestion-severe)'
   }
 }
@@ -61,10 +57,11 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
   const [selectedCorridor, setSelectedCorridor] = useState(CORRIDORS[0].id)
   const [selectedDirection, setSelectedDirection] = useState<'f' | 'r'>('f')
   const [hoveredCell, setHoveredCell] = useState<{ dow: number; hr: number } | null>(null)
+  const [tooltipPos, setTooltipPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
 
   // Select appropriate delay fields based on baseline
-  const p50Field: 'p50DelayUsual' | 'p50DelayBest' = baseline === 'historic' ? 'p50DelayUsual' : 'p50DelayBest'
-  const p90Field: 'p90DelayUsual' | 'p90DelayBest' = baseline === 'historic' ? 'p90DelayUsual' : 'p90DelayBest'
+  const p50Field: 'p50UsualDelaySeconds' | 'p50FreeFlowDelaySeconds' = baseline === 'usual' ? 'p50UsualDelaySeconds' : 'p50FreeFlowDelaySeconds'
+  const p90Field: 'p90UsualDelaySeconds' | 'p90FreeFlowDelaySeconds' = baseline === 'usual' ? 'p90UsualDelaySeconds' : 'p90FreeFlowDelaySeconds'
 
   const dirKey = `${selectedCorridor}_${selectedDirection}`
 
@@ -156,12 +153,13 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
               role="tab"
               aria-selected={selectedCorridor === c.id}
               onClick={() => setSelectedCorridor(c.id)}
-              className="min-h-8 px-3 text-xs font-medium rounded-md focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
+              className="min-h-8 px-3 text-xs font-medium rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
               style={{
                 color: selectedCorridor === c.id ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
                 backgroundColor: selectedCorridor === c.id ? 'var(--color-surface-overlay)' : 'transparent',
-                outlineColor: 'var(--color-focus)',
-              }}
+                '--tw-ring-color': 'var(--color-focus)',
+                '--tw-ring-offset-color': 'var(--color-surface-raised)',
+              } as React.CSSProperties}
             >
               {c.tabLabel}
             </button>
@@ -174,12 +172,13 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
             <button
               key={dir}
               onClick={() => setSelectedDirection(dir)}
-              className="min-h-7 px-3 text-xs font-medium rounded focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 transition-colors"
+              className="min-h-7 px-3 text-xs font-medium rounded focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 transition-all"
               style={{
                 color: selectedDirection === dir ? 'var(--color-text-primary)' : 'var(--color-text-muted)',
                 backgroundColor: selectedDirection === dir ? 'var(--color-surface-raised)' : 'transparent',
-                outlineColor: 'var(--color-focus)',
-              }}
+                '--tw-ring-color': 'var(--color-focus)',
+                '--tw-ring-offset-color': 'var(--color-surface-raised)',
+              } as React.CSSProperties}
               aria-pressed={selectedDirection === dir}
             >
               {dir === 'f' ? selectedCorridorDef.forwardLabel : selectedCorridorDef.reverseLabel}
@@ -214,8 +213,8 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
             <div
               className="grid gap-0.5 min-w-[max-content]"
               style={{
-                gridTemplateColumns: '3rem repeat(12, minmax(28px, 1fr))',
-                gridTemplateRows: '2rem repeat(7, minmax(28px, 1fr))',
+                gridTemplateColumns: '3rem repeat(24, minmax(14px, 1fr))',
+                gridTemplateRows: 'auto repeat(7, minmax(28px, 1fr))',
               }}
             >
               {/* Corner cell */}
@@ -225,7 +224,7 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
               {HOUR_LABELS.map((label) => (
                 <div
                   key={label}
-                  className="col-start-[span-2] text-[10px] text-center flex items-center justify-center"
+                  className="col-span-2 text-[10px] text-center flex items-center justify-center"
                   style={{ color: 'var(--color-text-muted)' }}
                 >
                   {label}
@@ -248,20 +247,20 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
                     const cell = gridData.find(c => c.dow === displayDow && c.hr === hr)
                     const bucket = cell?.bucket
                     const delaySec = bucket ? getDelayField(bucket, p90Field) : null
-                    const isEmpty = delaySec === null || delaySec === 0
+                    const isEmpty = delaySec === null
                     const incidentCount = bucket?.incidentCount ?? 0
 
                     return (
                       <div
                         key={`${displayDow}-${hr}`}
-                        className="aspect-square rounded-sm cursor-crosshair transition-colors focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-1 relative"
+                        className="rounded-sm cursor-crosshair transition-colors focus-visible:outline-2 focus-visible:outline-offset-1 relative"
                         style={{
                           backgroundColor: delayToColor(delaySec),
                           outlineColor: 'var(--color-focus)',
                         }}
-                        onMouseEnter={() => setHoveredCell({ dow: displayDow, hr })}
+                        onMouseEnter={(e) => { setHoveredCell({ dow: displayDow, hr }); setTooltipPos({ x: e.clientX, y: e.clientY }) }}
                         onMouseLeave={() => setHoveredCell(null)}
-                        onFocus={() => setHoveredCell({ dow: displayDow, hr })}
+                        onFocus={(e) => { setHoveredCell({ dow: displayDow, hr }); const r = e.currentTarget.getBoundingClientRect(); setTooltipPos({ x: r.right, y: r.top }) }}
                         onBlur={() => setHoveredCell(null)}
                         tabIndex={0}
                         role="gridcell"
@@ -314,9 +313,8 @@ export function HeatmapChart({ data, expanded, onToggle, baseline }: HeatmapChar
             backgroundColor: 'var(--color-surface-overlay)',
             border: '1px solid var(--color-border)',
             color: 'var(--color-text-primary)',
-            // Position near cursor but offset slightly
-            left: `calc(${hoveredCell.hr * 32 + 80}px)`,
-            top: `calc(${hoveredCell.dow * 32 + 200}px)`,
+            left: tooltipPos.x + 12,
+            top: tooltipPos.y - 8,
           }}
         >
           {(() => {
