@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import { useState, useCallback } from 'react'
 import type { LatestResponse, HistoryBucket, TrafficSamplePoint, HeatmapResponse, HeatmapBucket, Incident, CorridorDirection } from './types'
 
 const API_BASE = import.meta.env.VITE_API_URL || ''
@@ -71,12 +71,6 @@ export function useTrafficData() {
       setRefreshing(false)
     }
   }, [])
-
-  useEffect(() => {
-    load('3h', true)
-    const interval = setInterval(() => load('3h'), 10 * 60 * 1000)
-    return () => clearInterval(interval)
-  }, [load])
 
   const corridors = data?.corridors ?? {}
   const incidents: Incident[] = []
